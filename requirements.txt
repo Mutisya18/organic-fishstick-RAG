@@ -1,0 +1,10 @@
+pypdf
+python-docx
+langchain
+langchain-community
+langchain-chroma
+langchain-ollama
+chromadb # Vector storage
+pytest
+boto3
+streamlit # Web UI framework
