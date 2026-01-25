@@ -12,17 +12,32 @@ Provides a web-based chat interface with:
 import streamlit as st
 import time
 import traceback
+import json
 from typing import Optional, Dict, Any
 
 from query_data import query_rag, extract_sources_from_query
 from logger.rag_logging import RAGLogger
 from logger.session_manager import SessionManager
 from config.prompts import SYSTEM_PROMPTS, DEFAULT_PROMPT_VERSION
+from eligibility.orchestrator import EligibilityOrchestrator
 
 
 # Initialize logging
 rag_logger = RAGLogger()
 session_manager = SessionManager()
+
+# Initialize eligibility orchestrator (will raise if config/data files missing)
+try:
+    eligibility_orchestrator = EligibilityOrchestrator()
+    eligibility_available = True
+except Exception as e:
+    rag_logger.log_error(
+        request_id="startup",
+        error_type="EligibilityInitError",
+        error_message=f"Eligibility module failed to initialize: {str(e)}",
+        traceback_str=traceback.format_exc(),
+    )
+    eligibility_available = False
 
 
 def initialize_session_state():
@@ -33,6 +48,41 @@ def initialize_session_state():
         st.session_state.session_id = session_manager._session_id
     if "error_message" not in st.session_state:
         st.session_state.error_message = None
+
+
+def format_eligibility_response(payload: Dict[str, Any]) -> str:
+    """
+    Format eligibility payload into readable markdown response.
+    
+    Args:
+        payload: Eligibility payload from orchestrator.
+    
+    Returns:
+        Formatted markdown string.
+    """
+    response = "## Eligibility Check Results\n\n"
+    
+    summary = payload.get("summary", {})
+    response += f"**Total Accounts Checked**: {summary.get('total_accounts', 0)}\n\n"
+    
+    accounts = payload.get("accounts", [])
+    for account_data in accounts:
+        status = account_data.get("status", "UNKNOWN")
+        status_emoji = "✅" if status == "ELIGIBLE" else "❌" if status == "NOT_ELIGIBLE" else "❓"
+        response += f"{status_emoji} **Status**: {status}\n\n"
+        
+        reasons = account_data.get("reasons", [])
+        if reasons:
+            response += "**Reasons**:\n"
+            for reason in reasons:
+                response += f"- **{reason.get('code', 'Unknown')}**: {reason.get('meaning', '')}\n"
+                if reason.get('next_steps'):
+                    response += "  - **Next Steps**:\n"
+                    for step in reason.get('next_steps', []):
+                        response += f"    - {step.get('action', '')} (Owner: {step.get('owner', 'Unknown')})\n"
+            response += "\n"
+    
+    return response
 
 
 def get_user_friendly_error_message(error_type: str, error_message: str) -> str:
@@ -82,7 +132,37 @@ def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION)
         "latency_ms": 0,
         "sources": [],
         "prompt_version": prompt_version,
+        "is_eligibility_flow": False,
+        "eligibility_payload": None,
     }
+    
+    # Check if this is an eligibility question
+    if eligibility_available:
+        try:
+            eligibility_payload = eligibility_orchestrator.process_message(query_text)
+            if eligibility_payload:
+                result["is_eligibility_flow"] = True
+                result["eligibility_payload"] = eligibility_payload
+                rag_logger.log_warning(
+                    request_id=request_id,
+                    message="Eligibility flow triggered",
+                    event_type="eligibility_detected",
+                )
+                # For eligibility flow, format the response as readable text
+                response_text = format_eligibility_response(eligibility_payload)
+                result["success"] = True
+                result["response"] = response_text
+                result["latency_ms"] = (time.time() - start_time) * 1000
+                return result
+        except Exception as e:
+            # Log eligibility error but continue with RAG
+            rag_logger.log_error(
+                request_id=request_id,
+                error_type="EligibilityProcessError",
+                error_message=str(e),
+                traceback_str=traceback.format_exc(),
+            )
+            # Fall through to normal RAG query
     
     try:
         # Extract sources
@@ -238,6 +318,7 @@ def main():
             - Citation tracking
             - Query logging
             - Error handling
+            - Eligibility checking {'✅' if eligibility_available else '❌ (unavailable)'}
             """
         )
         st.divider()
@@ -278,25 +359,37 @@ def main():
                 st.markdown(result["response"])
                 
                 # Show sources and details in single expander
-                with st.expander("📚 Sources & Details"):
-                    # Display sources
-                    st.markdown("**Sources Used:**")
-                    for idx, source in enumerate(result["sources"], 1):
-                        st.markdown(f"**{idx}. {source['source']}**")
-                        st.caption(f"Page: {source['page']}")
-                        st.caption(f"Preview: {source['content_preview']}")
-                    
-                    # Divider between sources and details
-                    st.divider()
-                    
-                    # Display technical details as footnote
-                    col1, col2, col3 = st.columns(3)
-                    with col1:
-                        st.metric("Request ID", result["request_id"][:8] + "...")
-                    with col2:
-                        st.metric("Latency", f"{result['latency_ms']:.2f} ms")
-                    with col3:
-                        st.metric("Prompt Version", result["prompt_version"])
+                if result["is_eligibility_flow"]:
+                    # For eligibility flow, show raw payload in expander
+                    with st.expander("📋 Eligibility Details"):
+                        st.json(result["eligibility_payload"])
+                        st.divider()
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            st.metric("Request ID", result["request_id"][:8] + "...")
+                        with col2:
+                            st.metric("Latency", f"{result['latency_ms']:.2f} ms")
+                else:
+                    # For RAG flow, show sources and details
+                    with st.expander("📚 Sources & Details"):
+                        # Display sources
+                        st.markdown("**Sources Used:**")
+                        for idx, source in enumerate(result["sources"], 1):
+                            st.markdown(f"**{idx}. {source['source']}**")
+                            st.caption(f"Page: {source['page']}")
+                            st.caption(f"Preview: {source['content_preview']}")
+                        
+                        # Divider between sources and details
+                        st.divider()
+                        
+                        # Display technical details as footnote
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("Request ID", result["request_id"][:8] + "...")
+                        with col2:
+                            st.metric("Latency", f"{result['latency_ms']:.2f} ms")
+                        with col3:
+                            st.metric("Prompt Version", result["prompt_version"])
             
             # Add assistant message to history with sources
             st.session_state.chat_history.append({

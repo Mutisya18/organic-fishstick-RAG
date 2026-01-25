@@ -1,16 +1,17 @@
 import argparse
 import time
+import os
 from typing import List, Dict, Any
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import OllamaLLM
 
-from get_embedding_function import get_embedding_function
+from get_embedding_function import get_embedding_function, OLLAMA_BASE_URL
 from logger.rag_logging import RAGLogger
 from logger.trace import technical_trace
 from config.prompts import SYSTEM_PROMPTS, DEFAULT_PROMPT_VERSION
 
-CHROMA_PATH = "chroma"
+CHROMA_PATH = os.getenv("CHROMA_PATH", "chroma")
 rag_logger = RAGLogger()
 
 
@@ -94,7 +95,7 @@ def query_rag(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION) -> 
         
         # Generate response
         generation_start = time.time()
-        model = OllamaLLM(model="llama3.2:3b", base_url="https://reynalda-unmelodized-miles.ngrok-free.dev")
+        model = OllamaLLM(model="llama3.2:3b", base_url=OLLAMA_BASE_URL)
         response_text = model.invoke(prompt)
         generation_latency = (time.time() - generation_start) * 1000
         
