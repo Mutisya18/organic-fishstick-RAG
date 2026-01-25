@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "file_type": "EXPLANATION_PLAYBOOK",
+  "description": "Maps reason codes to explanation requirements, evidence validation, and fact rendering rules. Ensures LLM cannot drop critical evidence.",
+  "explanations": {
+    "JOINT_ACCOUNT_EXCLUSION": {
+      "explanation_template": "The account is a joint account, and joint accounts are not eligible.",
+      "required_facts": [],
+      "fact_rendering": [],
+      "evidence_validation": "No evidence required for this reason type."
+    },
+    "AVERAGE_BALANCE_EXCLUSION": {
+      "explanation_template": "Customer failed the Average Balance requirement.",
+      "required_facts": [],
+      "fact_rendering": [],
+      "evidence_validation": "No evidence available. Remediation steps not provided."
+    },
+    "DPD_ARREARS_EXCLUSION": {
+      "explanation_template": "Account excluded due to arrears/DPD exceeding 3 days.",
+      "required_facts": [
+        "arrears_days",
+        "credit_card_od_days",
+        "dpd_days",
+        "max_dpd_driver",
+        "driver_source"
+      ],
+      "fact_rendering": [
+        "Loan arrears days: {arrears_days}",
+        "Credit card OD days: {credit_card_od_days}",
+        "Overdraft DPD days: {dpd_days}",
+        "DPD driver (max): {max_dpd_driver} days from {driver_source}"
+      ],
+      "evidence_validation": "STRICT: All five fields must be present. If any missing, output: 'Cannot confirm arrears days (missing in reasons file).'"
+    },
+    "ELMA_EXCLUSION": {
+      "explanation_template": "Customer failed ELMA eligibility check.",
+      "required_facts": [],
+      "fact_rendering": [],
+      "evidence_validation": "No specific evidence required. Reasons file does not specify ELMA sub-cause."
+    },
+    "MANDATE_EXCLUSION": {
+      "explanation_template": "Account mandate/signing authority does not match allowed sole-signing formats.",
+      "required_facts": [],
+      "fact_rendering": [],
+      "evidence_validation": "No numeric evidence. Next steps only if mandates is the sole/primary reason."
+    },
+    "CLASSIFICATION_EXCLUSION": {
+      "explanation_template": "Customer risk classification is below the minimum required level (A5).",
+      "required_facts": [
+        "classification"
+      ],
+      "fact_rendering": [
+        "Observed classification: {classification}"
+      ],
+      "evidence_validation": "REQUIRED: Classification field must be present and rendered. If missing, output: 'Cannot confirm classification (missing in reasons file).'"
+    },
+    "LINKED_BASE_EXCLUSION": {
+      "explanation_template": "A linked base account has classification below A5, causing exclusion.",
+      "required_facts": [
+        "linked_base",
+        "linked_base_classification"
+      ],
+      "fact_rendering": [
+        "Linked base account: {linked_base}",
+        "Linked base classification: {linked_base_classification}"
+      ],
+      "evidence_validation": "STRICT: Both linked base and classification must be present. If either missing, output: 'Cannot confirm linked base details (missing in reasons file).'"
+    },
+    "CUSTOMER_VINTAGE_EXCLUSION": {
+      "explanation_template": "Customer has not banked long enough (minimum 7 months required).",
+      "required_facts": [
+        "customer_vintage_Months"
+      ],
+      "fact_rendering": [
+        "Customer banking tenure: {customer_vintage_Months} months"
+      ],
+      "evidence_validation": "Vintage field should be rendered if available. If missing, output: 'Cannot confirm customer tenure (missing in reasons file).'"
+    },
+    "DORMANCY_INACTIVE_EXCLUSION": {
+      "explanation_template": "Account is dormant or inactive due to low transaction activity.",
+      "required_facts": [],
+      "fact_rendering": [],
+      "evidence_validation": "No numeric evidence in reasons file. Reactivation is automatic upon 30+ days consistent activity."
+    },
+    "TURNOVER_EXCLUSION": {
+      "explanation_template": "Customer lacks sufficient banking activity (needs activity in at least 5 out of 6 months).",
+      "required_facts": [],
+      "fact_rendering": [],
+      "evidence_validation": "No specific evidence fields required. Monthly review automatically triggered."
+    },
+    "RECENCY_EXCLUSION": {
+      "explanation_template": "Customer has inconsistent recent banking patterns (irregular transaction frequency and/or amounts).",
+      "required_facts": [],
+      "fact_rendering": [],
+      "evidence_validation": "No numeric evidence. Standalone exclusion reason."
+    }
+  }
+}

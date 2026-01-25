@@ -1,0 +1,167 @@
+{
+  "version": "1.0",
+  "file_type": "CHECKS_CATALOG",
+  "description": "Defines the Reasons File structure, check columns, evidence columns, expected values, and normalization rules.",
+  "primary_key": "account_number",
+  "dataset_rules": {
+    "reasons_file_contains_only_ineligible_accounts": true,
+    "eligible_accounts_not_present_in_this_file": true
+  },
+  "columns": [
+    {
+      "name": "CUSTOMERNAMES",
+      "type": "string",
+      "role": "identifier",
+      "required": false
+    },
+    {
+      "name": "account_number",
+      "type": "string",
+      "role": "identifier",
+      "required": true,
+      "format_hint": "10-digit account number"
+    },
+    {
+      "name": "Joint_Check",
+      "type": "string",
+      "role": "check",
+      "expected_values": ["Include", "Exclude", ""]
+    },
+    {
+      "name": "Average_Bal_check",
+      "type": "string",
+      "role": "check",
+      "expected_values": ["Include", "Exclude", ""]
+    },
+    {
+      "name": "DPD_Arrears_Check",
+      "type": "string",
+      "role": "check",
+      "expected_values": ["Include", "Exclude", ""]
+    },
+    {
+      "name": "Elma_check",
+      "type": "string",
+      "role": "check",
+      "expected_values": ["Include", "Exclude", ""]
+    },
+    {
+      "name": "Mandates_Check",
+      "type": "string",
+      "role": "check",
+      "expected_values": ["Include", "Exclude", ""]
+    },
+    {
+      "name": "Classification_Check",
+      "type": "string",
+      "role": "check",
+      "expected_values": ["Include", "Exclude", ""]
+    },
+    {
+      "name": "Linked_Base_Check",
+      "type": "string",
+      "role": "check",
+      "expected_values": ["Include", "Exclude", ""]
+    },
+    {
+      "name": "customer_vintage_Check",
+      "type": "string",
+      "role": "check",
+      "expected_values": ["Include", "Exclude", ""]
+    },
+    {
+      "name": "Active_Inactive_Check",
+      "type": "string",
+      "role": "check",
+      "expected_values": ["Include", "Exclude", ""]
+    },
+    {
+      "name": "Turnover_Check",
+      "type": "string",
+      "role": "check",
+      "expected_values": ["Include", "Exclude", ""]
+    },
+    {
+      "name": "Recency_Check",
+      "type": "string",
+      "role": "check_special",
+      "expected_values": ["Y", "N", ""],
+      "notes": "Recency_Check=N must be treated as an exclusion reason even if other checks are Include."
+    },
+    {
+      "name": "CLASSIFICATION",
+      "type": "string",
+      "role": "evidence",
+      "required": false
+    },
+    {
+      "name": "dormancy_status",
+      "type": "string",
+      "role": "evidence",
+      "expected_values": ["DORMANT", "INACTIVE", "", null]
+    },
+    {
+      "name": "Arrears_Days",
+      "type": "number",
+      "role": "evidence",
+      "null_handling": "treat_null_as_zero"
+    },
+    {
+      "name": "Credit_Card_OD_Days",
+      "type": "number",
+      "role": "evidence",
+      "null_handling": "treat_null_as_zero"
+    },
+    {
+      "name": "DPD_Days",
+      "type": "number",
+      "role": "evidence",
+      "null_handling": "treat_null_as_zero"
+    },
+    {
+      "name": "customer_vintage_Months",
+      "type": "number",
+      "role": "evidence",
+      "required": false
+    },
+    {
+      "name": "JOINT_ACCOUNT",
+      "type": "string",
+      "role": "evidence",
+      "expected_values": ["Y", "N", ""]
+    },
+    {
+      "name": "LINKED_BASE",
+      "type": "string",
+      "role": "evidence",
+      "required": false
+    },
+    {
+      "name": "LINKED_BASE_CLASSIFICATION",
+      "type": "string",
+      "role": "evidence",
+      "required": false
+    },
+    {
+      "name": "Mandate",
+      "type": "string",
+      "role": "evidence",
+      "required": false
+    },
+    {
+      "name": "Normalized_Mean",
+      "type": "number",
+      "role": "ignore",
+      "notes": "Not used for eligibility decisions. Must never be treated as an exclusion reason."
+    }
+  ],
+  "normalization_rules": {
+    "blank_string_values": ["", " ", null],
+    "convert_blanks_to_empty_string_for_text_fields": true,
+    "convert_blanks_to_zero_for_numeric_fields": [
+      "Arrears_Days",
+      "Credit_Card_OD_Days",
+      "DPD_Days"
+    ]
+  }
+}

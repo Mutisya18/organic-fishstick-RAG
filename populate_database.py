@@ -12,8 +12,8 @@ from logger.rag_logging import RAGLogger
 from logger.trace import technical_trace
 
 
-CHROMA_PATH = "chroma"
-DATA_PATH = "data"
+CHROMA_PATH = os.getenv("CHROMA_PATH", "chroma")
+DATA_PATH = os.getenv("DATA_PATH", "data")
 rag_logger = RAGLogger()
 
 

@@ -1,0 +1,89 @@
+{
+  "version": "1.0",
+  "file_type": "EVIDENCE_DISPLAY_RULES",
+  "description": "Defines how to format and display evidence fields for each reason code. Ensures consistent, LLM-friendly output.",
+  "display_rules": {
+    "JOINT_ACCOUNT_EXCLUSION": {
+      "has_evidence": false,
+      "display_lines": [
+        "Joint account status: Yes"
+      ]
+    },
+    "AVERAGE_BALANCE_EXCLUSION": {
+      "has_evidence": false,
+      "display_lines": [
+        "⚠️ Evidence not provided. Remediation steps cannot be determined."
+      ]
+    },
+    "DPD_ARREARS_EXCLUSION": {
+      "has_evidence": true,
+      "required_fields": ["arrears_days", "credit_card_od_days", "dpd_days", "max_dpd_driver", "driver_source"],
+      "format_template": [
+        "Loan arrears days: {arrears_days}",
+        "Credit card OD days: {credit_card_od_days}",
+        "Overdraft DPD days: {dpd_days}",
+        "Highest driver: {max_dpd_driver} days from {driver_source}"
+      ],
+      "threshold": "3 days",
+      "missing_error": "Cannot confirm arrears days (missing in reasons file)"
+    },
+    "ELMA_EXCLUSION": {
+      "has_evidence": false,
+      "display_lines": [
+        "ELMA eligibility check failed (either not on NCBA NOW mobile banking or another account already being considered)"
+      ]
+    },
+    "MANDATE_EXCLUSION": {
+      "has_evidence": false,
+      "display_lines": [
+        "Mandate/signing authority does not match allowed sole-signing formats (SOLE SIGNATORY / TO SIGN ALONE / SOLELY)"
+      ]
+    },
+    "CLASSIFICATION_EXCLUSION": {
+      "has_evidence": true,
+      "required_fields": ["classification"],
+      "format_template": [
+        "Current classification: {classification}",
+        "Minimum required: A5"
+      ],
+      "missing_error": "Cannot confirm classification (missing in reasons file)"
+    },
+    "LINKED_BASE_EXCLUSION": {
+      "has_evidence": true,
+      "required_fields": ["linked_base", "linked_base_classification"],
+      "format_template": [
+        "Linked base account: {linked_base}",
+        "Linked base classification: {linked_base_classification}",
+        "Minimum required: A5"
+      ],
+      "missing_error": "Cannot confirm linked base details (missing in reasons file)"
+    },
+    "CUSTOMER_VINTAGE_EXCLUSION": {
+      "has_evidence": true,
+      "required_fields": ["customer_vintage_months"],
+      "format_template": [
+        "Customer banking tenure: {customer_vintage_months} months",
+        "Minimum required: 7 months"
+      ],
+      "missing_error": "Cannot confirm customer tenure (missing in reasons file)"
+    },
+    "DORMANCY_INACTIVE_EXCLUSION": {
+      "has_evidence": false,
+      "display_lines": [
+        "Account is dormant/inactive due to low transaction activity"
+      ]
+    },
+    "TURNOVER_EXCLUSION": {
+      "has_evidence": false,
+      "display_lines": [
+        "Insufficient banking activity (requires activity in at least 5 of 6 months)"
+      ]
+    },
+    "RECENCY_EXCLUSION": {
+      "has_evidence": false,
+      "display_lines": [
+        "Inconsistent recent banking patterns (irregular transaction amounts and/or frequency)"
+      ]
+    }
+  }
+}
