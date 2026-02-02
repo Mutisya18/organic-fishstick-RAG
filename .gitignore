@@ -9,3 +9,20 @@ __pycache__/
 # Virtual environments
 venv/
 .venv/
+# Environment
+.env
+
+# Logs
+logs/
+*.log
+
+# Vector stores / runtime artifacts
+chroma/
+*.sqlite3
+
+# Python
+__pycache__/
+*.pyc
+
+# OS
+.DS_Store

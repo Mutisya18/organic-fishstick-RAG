@@ -12,8 +12,8 @@ Logs validation results (counts only, no account details).
 from typing import Tuple, List
 from datetime import datetime, timezone
 
-from logger.rag_logging import RAGLogger
-from logger.session_manager import SessionManager
+from utils.logger.rag_logging import RAGLogger
+from utils.logger.session_manager import SessionManager
 
 
 class AccountValidator:

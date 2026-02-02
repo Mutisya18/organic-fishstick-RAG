@@ -10,24 +10,25 @@ import re
 from typing import Tuple, Optional
 from datetime import datetime, timezone
 
-from logger.rag_logging import RAGLogger
-from logger.session_manager import SessionManager
+from utils.logger.rag_logging import RAGLogger
+from utils.logger.session_manager import SessionManager
 
 
 class IntentDetector:
     """Detect eligibility questions from user messages."""
 
     # Eligibility question keywords (case-insensitive)
+    # Uses word boundaries and specific phrases to avoid false positives
     ELIGIBILITY_KEYWORDS = [
-        r"eligible",  # "is customer eligible?"
-        r"why\s+no\s+limit",  # "why no limit?"
-        r"loan\s+limit",  # "loan limit issue"
-        r"not\s+getting\s+limit",  # "not getting limit"
-        r"check\s+eligibility",  # "check eligibility"
-        r"limit\s+allocation\s+failed",  # "limit allocation failed"
-        r"why\s+excluded",  # "why excluded"
-        r"excluded",  # "why excluded"
-        r"limit\s+issue",  # "limit issue"
+        r"\beligible(?:ity)?\b",  # "is customer eligible?" or "eligibility"
+        r"\bwhy\s+(?:is|am|are|should)\s+(?:i|we|customer|they|he|she)?\s*no\s+limit\b",  # "why no limit?"
+        r"\bloan\s+limit\b",  # "loan limit" (not "limited")
+        r"\bnot\s+getting\s+(?:a\s+)?limit\b",  # "not getting limit"
+        r"\bcheck\s+eligibility\b",  # "check eligibility"
+        r"\blimit\s+allocation\s+failed\b",  # "limit allocation failed"
+        r"\bwhy\s+(?:is|am|are|was)\s+.*?excluded\b",  # "why is/am/are excluded"
+        r"\b(?:customer|account)?\s*excluded\b",  # "excluded" or "customer excluded"
+        r"\blimit\s+issue\b",  # "limit issue" (not "limited issue")
     ]
 
     def __init__(self):

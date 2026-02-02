@@ -22,8 +22,8 @@ except ImportError:
         "openpyxl is required. Install with: pip install openpyxl"
     )
 
-from logger.rag_logging import RAGLogger
-from logger.session_manager import SessionManager
+from utils.logger.rag_logging import RAGLogger
+from utils.logger.session_manager import SessionManager
 
 
 class DataLoader:
