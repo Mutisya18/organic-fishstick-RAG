@@ -13,8 +13,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
-from logger.session_manager import SessionManager
-from logger.pii import scrub_text, scrub_dict
+from utils.logger.session_manager import SessionManager
+from utils.logger.pii import scrub_text, scrub_dict
 
 
 class RAGLogger:

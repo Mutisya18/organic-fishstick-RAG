@@ -96,8 +96,8 @@ if not os.path.exists('eligibility/data/reasons_file.xlsx'):
         echo ""
         echo "Next steps:"
         echo "  1. Add eligibility data to: eligibility/data/"
-        echo "  2. Copy PDFs/DOCX to: data/"
-        echo "  3. Run: python populate_database.py"
+        echo "  2. Copy PDFs/DOCX to: rag/data/"
+        echo "  3. Run: python rag/populate_database.py"
         echo "  4. Start: bash start.sh"
         ;;
     *)

@@ -19,8 +19,8 @@ import time
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timezone
 
-from logger.rag_logging import RAGLogger
-from logger.session_manager import SessionManager
+from utils.logger.rag_logging import RAGLogger
+from utils.logger.session_manager import SessionManager
 from eligibility.config_loader import ConfigLoader
 from eligibility.data_loader import DataLoader
 

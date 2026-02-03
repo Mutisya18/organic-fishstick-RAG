@@ -15,8 +15,8 @@ import os
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
-from logger.rag_logging import RAGLogger
-from logger.session_manager import SessionManager
+from utils.logger.rag_logging import RAGLogger
+from utils.logger.session_manager import SessionManager
 
 
 class ConfigLoader:

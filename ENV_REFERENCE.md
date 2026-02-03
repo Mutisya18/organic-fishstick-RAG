@@ -75,13 +75,13 @@ ENV=prod  # For production deployment
 
 ### CHROMA_PATH
 **Purpose**: Path to Chroma vector database  
-**Default**: `chroma` (relative to project root)  
+**Default**: `rag/chroma` (relative to project root)  
 **Relative paths**: Relative to current working directory  
 **Absolute paths**: Use full path `/path/to/chroma`
 
 ### DATA_PATH
 **Purpose**: Path to data directory (PDFs/DOCX files)  
-**Default**: `data` (relative to project root)  
+**Default**: `rag/data` (relative to project root)  
 **Note**: The `populate_database.py` script reads from here
 
 ### ELIGIBILITY_DATA_PATH
@@ -105,8 +105,8 @@ ENV=prod  # For production deployment
 OLLAMA_BASE_URL=http://localhost:11434
 LOG_DIR=/workspaces/organic-fishstick-RAG/logs
 ENV=dev
-CHROMA_PATH=chroma
-DATA_PATH=data
+CHROMA_PATH=rag/chroma
+DATA_PATH=rag/data
 ELIGIBILITY_DATA_PATH=eligibility/data
 ```
 
@@ -115,8 +115,8 @@ ELIGIBILITY_DATA_PATH=eligibility/data
 OLLAMA_BASE_URL=https://your-ngrok-url.ngrok-free.dev
 LOG_DIR=/workspaces/organic-fishstick-RAG/logs
 ENV=dev
-CHROMA_PATH=chroma
-DATA_PATH=data
+CHROMA_PATH=rag/chroma
+DATA_PATH=rag/data
 ELIGIBILITY_DATA_PATH=eligibility/data
 ```
 
