@@ -14,8 +14,8 @@ import os
 from typing import Callable, Any
 from datetime import datetime, timezone
 
-from utils.logger.session_manager import SessionManager
-from utils.logger.pii import scrub_text
+from logger.session_manager import SessionManager
+from logger.pii import scrub_text
 
 
 def technical_trace(func: Callable) -> Callable:

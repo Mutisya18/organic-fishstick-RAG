@@ -8,4 +8,3 @@ chromadb # Vector storage
 pytest
 boto3
 streamlit # Web UI framework
-openpyxl

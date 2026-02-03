@@ -124,17 +124,13 @@ pytest test_rag.py -v
 
 ```
 rag-tutorial-v2/
-├── rag/                           # RAG module
-│   ├── data/                      # PDF documents go here
-│   ├── chroma/                    # Vector database (auto-created)
-│   ├── config/                    # Configuration (prompts)
-│   ├── get_embedding_function.py  # Embedding configuration
-│   ├── populate_database.py       # Database population script
-│   ├── query_data.py              # Query interface
-│   └── test_rag.py                # Test suite
-├── eligibility/                   # Eligibility module
-├── logger/                        # Logging module
+├── data/                          # PDF documents go here
+├── chroma/                        # Vector database (auto-created)
 ├── venv/                          # Virtual environment
+├── get_embedding_function.py      # Embedding configuration
+├── populate_database.py           # Database population script
+├── query_data.py                  # Query interface
+├── test_rag.py                    # Test suite
 ├── requirements.txt               # Python dependencies
 ├── .gitignore                     # Git ignore rules
 └── README.md                      # Project readme
@@ -155,12 +151,12 @@ python populate_database.py --reset
 
 ### Querying
 ```bash
-python rag/query_data.py "Your question here"
+python query_data.py "Your question here"
 ```
 
 ### Running Tests
 ```bash
-pytest rag/test_rag.py -v
+pytest test_rag.py -v
 ```
 
 ## Troubleshooting
@@ -182,20 +178,20 @@ pytest rag/test_rag.py -v
 ## Configuration Options
 
 ### Chunk Size Settings
-In `rag/populate_database.py`, adjust chunking parameters:
+In `populate_database.py`, adjust chunking parameters:
 ```python
 chunk_size=800,      # Characters per chunk
 chunk_overlap=80,    # Overlap between chunks
 ```
 
 ### Number of Results
-In `rag/query_data.py`, adjust the number of relevant chunks retrieved:
+In `query_data.py`, adjust the number of relevant chunks retrieved:
 ```python
 results = db.similarity_search_with_score(query_text, k=5)  # Change k value
 ```
 
 ### Using AWS Bedrock (Alternative)
-Uncomment in `rag/get_embedding_function.py`:
+Uncomment in `get_embedding_function.py`:
 ```python
 embeddings = BedrockEmbeddings(
     credentials_profile_name="default", 

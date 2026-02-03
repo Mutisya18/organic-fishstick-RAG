@@ -8,22 +8,4 @@ __pycache__/
 
 # Virtual environments
 venv/
-vecna/
 .venv/
-# Environment
-.env
-
-# Logs
-logs/
-*.log
-
-# Vector stores / runtime artifacts
-chroma/
-*.sqlite3
-
-# Python
-__pycache__/
-*.pyc
-
-# OS
-.DS_Store
