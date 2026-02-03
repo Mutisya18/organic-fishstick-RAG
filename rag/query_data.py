@@ -1,16 +1,23 @@
 import argparse
 import time
-from typing import List, Dict, Any
+import os
+from typing import List, Dict, Any, Optional
+from pathlib import Path
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_ollama import OllamaLLM
 
-from get_embedding_function import get_embedding_function
-from logger.rag_logging import RAGLogger
-from logger.trace import technical_trace
-from config.prompts import SYSTEM_PROMPTS, DEFAULT_PROMPT_VERSION
+# Add parent directory to path to import modules from root
+import sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-CHROMA_PATH = "chroma"
+from rag.get_embedding_function import get_embedding_function, OLLAMA_BASE_URL
+from utils.logger.rag_logging import RAGLogger
+from utils.logger.trace import technical_trace
+from rag.config.prompts import SYSTEM_PROMPTS, DEFAULT_PROMPT_VERSION
+from utils.context.conversation_memory import ConversationMemory
+
+CHROMA_PATH = os.getenv("CHROMA_PATH", "chroma")
 rag_logger = RAGLogger()
 
 
@@ -51,7 +58,7 @@ def extract_sources_from_query(query_text: str) -> List[Dict[str, Any]]:
 
 
 @technical_trace
-def query_rag(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION) -> str:
+def query_rag(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION, conversation_memory: Optional[ConversationMemory] = None) -> str:
     request_id = rag_logger.generate_request_id()
     retrieval_start = time.time()
     
@@ -85,16 +92,23 @@ def query_rag(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION) -> 
         # Build context
         context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
         
-        # Build prompt with system message
-        prompt_template = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", "Context:\n{context}\n\nQuestion: {question}"),
-        ])
-        prompt = prompt_template.format(context=context_text, question=query_text)
+        # Build conversation context if memory is provided
+        conversation_context = ""
+        if conversation_memory:
+            conversation_context = conversation_memory.get_context()
+        
+        # Build prompt text
+        prompt_parts = [system_prompt]
+        
+        if conversation_context:
+            prompt_parts.append(f"\n\n---Previous Conversation---\n{conversation_context}\n\n---Current Question---")
+        
+        prompt_parts.append(f"\nContext:\n{context_text}\n\nQuestion: {query_text}")
+        prompt = "".join(prompt_parts)
         
         # Generate response
         generation_start = time.time()
-        model = OllamaLLM(model="llama3.2:3b", base_url="https://reynalda-unmelodized-miles.ngrok-free.dev")
+        model = OllamaLLM(model="llama3.2:3b", base_url=OLLAMA_BASE_URL)
         response_text = model.invoke(prompt)
         generation_latency = (time.time() - generation_start) * 1000
         

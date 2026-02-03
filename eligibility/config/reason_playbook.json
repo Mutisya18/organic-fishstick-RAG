@@ -1,0 +1,200 @@
+{
+  "version": "1.0",
+  "file_type": "REASON_PLAYBOOK",
+  "description": "Staff-facing explanations, remediation steps, owners, and timing per reason_code.",
+  "reason_playbook": {
+    "JOINT_ACCOUNT_EXCLUSION": {
+      "meaning": "The account is a joint account, and joint accounts are not eligible for loan limits.",
+      "next_steps": [
+        {
+          "action": "Use an existing sole account instead (if available).",
+          "owner": "Staff/Customer"
+        },
+        {
+          "action": "Open a sole account.",
+          "owner": "Customer"
+        },
+        {
+          "action": "Convert account arrangement to sole account (if supported).",
+          "owner": "Branch/RM"
+        }
+      ],
+      "review_type": "System review",
+      "review_timing": "Unknown / not explicitly defined",
+      "manual_override_allowed": false,
+      "constraints": []
+    },
+    "AVERAGE_BALANCE_EXCLUSION": {
+      "meaning": "Customer failed the Average Balance requirement.",
+      "next_steps": [
+        {
+          "action": "Remediation steps not provided. Do not assume thresholds or fixes.",
+          "owner": "Unknown"
+        }
+      ],
+      "review_type": "Unknown",
+      "review_timing": "Unknown",
+      "manual_override_allowed": false,
+      "constraints": [
+        "Do not invent thresholds or remediation."
+      ]
+    },
+    "DPD_ARREARS_EXCLUSION": {
+      "meaning": "Customer had DPD/arrears greater than 3 days within the past 60 days.",
+      "next_steps": [
+        {
+          "action": "Customer must clear the arrears position (pay overdue amounts).",
+          "owner": "Customer"
+        },
+        {
+          "action": "After clearance, wait a 2-month cooling period starting the next day.",
+          "owner": "System"
+        }
+      ],
+      "review_type": "Automatic",
+      "review_timing": "After 2-month cooling period",
+      "manual_override_allowed": false,
+      "constraints": [
+        "Cooling resets if arrears >3 days occur again."
+      ]
+    },
+    "ELMA_EXCLUSION": {
+      "meaning": "Customer failed ELMA eligibility (either not set up on mobile banking NCBA NOW, or another account is already being considered).",
+      "next_steps": [
+        {
+          "action": "Confirm customer is set up on NCBA NOW mobile banking.",
+          "owner": "Staff"
+        },
+        {
+          "action": "Confirm which account is currently being considered for loan limit.",
+          "owner": "Staff"
+        },
+        {
+          "action": "If needed, assist customer to change the account being considered.",
+          "owner": "Staff/Customer"
+        }
+      ],
+      "review_type": "Operational confirmation by staff",
+      "review_timing": "No waiting period required",
+      "manual_override_allowed": false,
+      "constraints": [
+        "Staff must confirm customer is set up on NCBA NOW mobile banking.",
+        "Staff must confirm which account is currently being considered.",
+        "Only one account per customer can be considered at a time.",
+        "Reasons file does not specify which ELMA sub-cause applies."
+      ]
+    },
+    "MANDATE_EXCLUSION": {
+      "meaning": "Account mandate/signing authority does not match the allowed sole-signing mandate formats.",
+      "next_steps": [
+        {
+          "action": "Update mandate to exactly one of: SOLE SIGNATORY / TO SIGN ALONE / SOLELY.",
+          "owner": "Customer/RM"
+        },
+        {
+          "action": "RM to update mandate at branch.",
+          "owner": "RM"
+        }
+      ],
+      "review_type": "Manual review",
+      "review_timing": "Next day (only if mandates is the reason for exclusion)",
+      "manual_override_allowed": false,
+      "constraints": [
+        "Review timing only applies if mandates is the sole or primary reason for exclusion.",
+        "If multiple reasons exist, apply the most restrictive timing.",
+        "Strict text match required (no fuzzy matching)."
+      ]
+    },
+    "CLASSIFICATION_EXCLUSION": {
+      "meaning": "Customer risk classification is below the minimum required level (A5).",
+      "next_steps": [
+        {
+          "action": "RM to liaise with Portfolio Management for classification review/upgrade.",
+          "owner": "RM/Portfolio Management"
+        },
+        {
+          "action": "Customer may request a classification review.",
+          "owner": "Customer"
+        }
+      ],
+      "review_type": "Portfolio Management review",
+      "review_timing": "Unknown / not explicitly defined",
+      "manual_override_allowed": false,
+      "constraints": [
+        "Must be upgraded to A5 or higher."
+      ]
+    },
+    "LINKED_BASE_EXCLUSION": {
+      "meaning": "A linked base has classification below A5, which blocks eligibility.",
+      "next_steps": [
+        {
+          "action": "Resolve linked base risk/classification issue via Portfolio Management.",
+          "owner": "Portfolio Management"
+        }
+      ],
+      "review_type": "Portfolio Management review",
+      "review_timing": "Unknown / not explicitly defined",
+      "manual_override_allowed": false,
+      "constraints": [
+        "If LINKED_BASE is blank, treat as Include (no linked base)."
+      ]
+    },
+    "CUSTOMER_VINTAGE_EXCLUSION": {
+      "meaning": "Customer has not banked long enough (minimum 7 months required).",
+      "next_steps": [
+        {
+          "action": "Customer should continue banking until they reach at least 7 months.",
+          "owner": "Customer"
+        }
+      ],
+      "review_type": "Automatic",
+      "review_timing": "Automatic review once customer reaches 7 months",
+      "manual_override_allowed": false,
+      "constraints": []
+    },
+    "DORMANCY_INACTIVE_EXCLUSION": {
+      "meaning": "Account is dormant/inactive due to low activity.",
+      "next_steps": [
+        {
+          "action": "Customer must transact to reactivate the account.",
+          "owner": "Customer"
+        }
+      ],
+      "review_type": "Automatic",
+      "review_timing": "Automatic reactivation upon 30+ days of consistent transaction activity",
+      "manual_override_allowed": false,
+      "constraints": [
+        "Activity must be consistent (regular deposits, transactions, or account movement).",
+        "Reactivation triggers automatically once 30+ days threshold of consistent activity is met."
+      ]
+    },
+    "TURNOVER_EXCLUSION": {
+      "meaning": "Customer does not have sufficient activity/turnover history (needs activity in at least 5 out of 6 months).",
+      "next_steps": [
+        {
+          "action": "Improve and maintain consistent banking activity, especially credits.",
+          "owner": "Customer"
+        }
+      ],
+      "review_type": "Monthly system review",
+      "review_timing": "Reviewed monthly until sufficient",
+      "manual_override_allowed": false,
+      "constraints": []
+    },
+    "RECENCY_EXCLUSION": {
+      "meaning": "Customer has inconsistent recent banking patterns (irregular amounts/frequency).",
+      "next_steps": [
+        {
+          "action": "Maintain more consistent transaction frequency and amounts.",
+          "owner": "Customer"
+        }
+      ],
+      "review_type": "System review",
+      "review_timing": "Unknown / not explicitly defined",
+      "manual_override_allowed": false,
+      "constraints": [
+        "Recency_Check=N is a standalone exclusion reason and must always be listed."
+      ]
+    }
+  }
+}

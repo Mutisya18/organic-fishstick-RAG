@@ -13,8 +13,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Dict, List, Any, Optional
 
-from logger.session_manager import SessionManager
-from logger.pii import scrub_text, scrub_dict
+from utils.logger.session_manager import SessionManager
+from utils.logger.pii import scrub_text, scrub_dict
 
 
 class RAGLogger:
@@ -313,6 +313,38 @@ class RAGLogger:
         }
         
         self.sm.log(entry, severity="ERROR")
+    
+    def log(
+        self,
+        request_id: str,
+        event: str,
+        severity: str = "INFO",
+        message: str = "",
+        context: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Generic log method for arbitrary events.
+        
+        Args:
+            request_id: Unique request identifier.
+            event: Event type/name.
+            severity: Log severity (DEBUG, INFO, WARNING, ERROR).
+            message: Optional message.
+            context: Optional context dictionary with additional fields.
+        """
+        entry = {
+            "event": event,
+            "request_id": request_id,
+            "timestamp": datetime.now(timezone.utc).isoformat(timespec="milliseconds") + "Z",
+        }
+        
+        if message:
+            entry["message"] = message
+        
+        if context:
+            entry.update(context)
+        
+        self.sm.log(entry, severity=severity)
 
 
 # Global singleton instance

@@ -3,17 +3,25 @@ import os
 import shutil
 import time
 from pathlib import Path
+from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFDirectoryLoader, Docx2txtLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
-from get_embedding_function import get_embedding_function
+from sys import path as sys_path
+
+# Load environment variables from .env file
+load_dotenv()
+
+# Add parent directory to path to import modules from root
+sys_path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from rag.get_embedding_function import get_embedding_function
 from langchain_chroma import Chroma
-from logger.rag_logging import RAGLogger
-from logger.trace import technical_trace
+from utils.logger.rag_logging import RAGLogger
+from utils.logger.trace import technical_trace
 
 
-CHROMA_PATH = "chroma"
-DATA_PATH = "data"
+CHROMA_PATH = os.getenv("CHROMA_PATH", "rag/chroma")
+DATA_PATH = os.getenv("DATA_PATH", "rag/data")
 rag_logger = RAGLogger()
 
 
@@ -172,7 +180,16 @@ def add_to_chroma(chunks: list[Document]):
         if len(new_chunks):
             print(f"👉 Adding new documents: {len(new_chunks)}")
             new_chunk_ids = [chunk.metadata["id"] for chunk in new_chunks]
-            db.add_documents(new_chunks, ids=new_chunk_ids)
+            
+            # Process documents in batches to avoid timeout issues with ngrok
+            batch_size = 10
+            for i in range(0, len(new_chunks), batch_size):
+                batch_end = min(i + batch_size, len(new_chunks))
+                batch = new_chunks[i:batch_end]
+                batch_ids = new_chunk_ids[i:batch_end]
+                print(f"  Processing batch {i//batch_size + 1}: documents {i+1}-{batch_end}")
+                db.add_documents(batch, ids=batch_ids)
+                time.sleep(1)  # Brief pause between batches to prevent overwhelming the server
             
             rag_logger.log_warning(
                 request_id=request_id,
