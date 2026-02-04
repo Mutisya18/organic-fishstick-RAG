@@ -20,7 +20,6 @@ from utils.logger.rag_logging import RAGLogger
 from utils.logger.session_manager import SessionManager
 from rag.config.prompts import SYSTEM_PROMPTS, DEFAULT_PROMPT_VERSION
 from eligibility.orchestrator import EligibilityOrchestrator
-from utils.context.conversation_memory import ConversationMemory
 
 
 # Initialize logging
@@ -49,8 +48,6 @@ def initialize_session_state():
         st.session_state.session_id = session_manager._session_id
     if "error_message" not in st.session_state:
         st.session_state.error_message = None
-    if "conversation_memory" not in st.session_state:
-        st.session_state.conversation_memory = ConversationMemory(session_id=session_manager._session_id)
 
 
 def format_eligibility_response(payload: Dict[str, Any]) -> str:
@@ -112,14 +109,13 @@ def get_user_friendly_error_message(error_type: str, error_message: str) -> str:
     return error_map.get(error_type, error_message or "An unknown error occurred. Please try again.")
 
 
-def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION, conversation_memory: Optional[ConversationMemory] = None) -> Dict[str, Any]:
+def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION) -> Dict[str, Any]:
     """
     Process user query through RAG pipeline.
     
     Args:
         query_text: User's query string.
         prompt_version: System prompt version to use.
-        conversation_memory: Optional conversation memory instance for context.
     
     Returns:
         Dictionary with response, error status, metadata, and sources.
@@ -140,10 +136,6 @@ def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION,
         "eligibility_payload": None,
     }
     
-    # Add user message to conversation memory
-    if conversation_memory:
-        conversation_memory.add_message("user", query_text, request_id=request_id)
-    
     # Check if this is an eligibility question
     if eligibility_available:
         try:
@@ -161,11 +153,6 @@ def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION,
                 result["success"] = True
                 result["response"] = response_text
                 result["latency_ms"] = (time.time() - start_time) * 1000
-                
-                # Add assistant response to conversation memory
-                if conversation_memory:
-                    conversation_memory.add_message("assistant", response_text, request_id=request_id)
-                
                 return result
         except Exception as e:
             # Log eligibility error but continue with RAG
@@ -182,15 +169,11 @@ def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION,
         sources = extract_sources_from_query(query_text)
         result["sources"] = sources
         
-        # Call RAG query function with prompt version and conversation memory
-        response = query_rag(query_text, prompt_version=prompt_version, conversation_memory=conversation_memory)
+        # Call RAG query function with prompt version
+        response = query_rag(query_text, prompt_version=prompt_version)
         result["success"] = True
         result["response"] = response
         result["latency_ms"] = (time.time() - start_time) * 1000
-        
-        # Add assistant response to conversation memory
-        if conversation_memory:
-            conversation_memory.add_message("assistant", response, request_id=request_id)
         
         rag_logger.log_warning(
             request_id=request_id,
@@ -325,15 +308,6 @@ def main():
             help="V1.0.0: Fast & simple | V1.1.0: Structured & production-quality"
         )
         st.divider()
-        st.header("💾 Memory")
-        memory_info = st.session_state.conversation_memory.get_summary()
-        st.metric("Messages in Memory", memory_info["message_count"])
-        st.caption(f"Max: {memory_info['max_messages']} messages")
-        if st.button("Clear Memory"):
-            st.session_state.conversation_memory.clear()
-            st.session_state.chat_history = []
-            st.rerun()
-        st.divider()
         st.header("ℹ️ About")
         st.markdown(
             f"""
@@ -344,7 +318,6 @@ def main():
             - Citation tracking
             - Query logging
             - Error handling
-            - Conversation memory (last 10 messages)
             - Eligibility checking {'✅' if eligibility_available else '❌ (unavailable)'}
             """
         )
@@ -376,9 +349,9 @@ def main():
         with st.chat_message("user"):
             st.markdown(user_input)
         
-        # Process query with selected prompt version and conversation memory
+        # Process query with selected prompt version
         with st.spinner("🔍 Searching and generating response..."):
-            result = process_query(user_input, prompt_version=prompt_version, conversation_memory=st.session_state.conversation_memory)
+            result = process_query(user_input, prompt_version=prompt_version)
         
         if result["success"]:
             # Display success response
