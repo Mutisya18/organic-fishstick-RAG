@@ -1,8 +1,4 @@
-Great question — this choice matters a lot more than people think, and you’re right to decide it **now**.
 
-I’ll give you a clear recommendation first, then explain *why*, then show the exact schema + flows.
-
----
 
 ## 🥇 Short answer (what you should do)
 
