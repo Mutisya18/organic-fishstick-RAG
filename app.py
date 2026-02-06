@@ -18,6 +18,7 @@ from typing import Optional, Dict, Any
 from rag.query_data import query_rag, extract_sources_from_query
 from utils.logger.rag_logging import RAGLogger
 from utils.logger.session_manager import SessionManager
+from utils.context.context_builder import build_rag_context
 from rag.config.prompts import SYSTEM_PROMPTS, DEFAULT_PROMPT_VERSION
 from eligibility.orchestrator import EligibilityOrchestrator
 from database import db as database_manager
@@ -288,13 +289,18 @@ def get_user_friendly_error_message(error_type: str, error_message: str) -> str:
     return error_map.get(error_type, error_message or "An unknown error occurred. Please try again.")
 
 
-def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION) -> Dict[str, Any]:
+def process_query(
+    query_text: str,
+    prompt_version: str = DEFAULT_PROMPT_VERSION,
+    enriched_context: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
     """
     Process user query through RAG pipeline.
     
     Args:
         query_text: User's query string.
         prompt_version: System prompt version to use.
+        enriched_context: Optional dict with conversation context (system_prompt, context, user_message).
     
     Returns:
         Dictionary with response, error status, metadata, and sources.
@@ -348,8 +354,12 @@ def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION)
         sources = extract_sources_from_query(query_text)
         result["sources"] = sources
         
-        # Call RAG query function with prompt version
-        response = query_rag(query_text, prompt_version=prompt_version)
+        # Call RAG query function with prompt version and enriched context
+        response = query_rag(
+            query_text,
+            prompt_version=prompt_version,
+            enriched_context=enriched_context
+        )
         result["success"] = True
         result["response"] = response
         result["latency_ms"] = (time.time() - start_time) * 1000
@@ -578,9 +588,21 @@ def main():
         with st.chat_message("user"):
             st.markdown(user_input)
         
-        # Process query with selected prompt version
+        # Build enriched context from conversation history
+        enriched_context = build_rag_context(
+            conversation_id=st.session_state.conversation_id,
+            user_message=user_input,
+            db_manager=database_manager,
+            prompt_version=prompt_version
+        )
+        
+        # Process query with selected prompt version and context
         with st.spinner("🔍 Searching and generating response..."):
-            result = process_query(user_input, prompt_version=prompt_version)
+            result = process_query(
+                user_input,
+                prompt_version=prompt_version,
+                enriched_context=enriched_context
+            )
         
         if result["success"]:
             # Save user message to database

@@ -1,13 +1,3 @@
-Perfect — MVP brain on, complexity brain off 👍
-What you’re describing is **very doable with almost zero infra**.
-
-I’ll give you:
-
-1. **The fastest MVP approach**
-2. **Exactly how to implement it**
-3. **What (minimal) info I need from you**
-
----
 
 ## 🚀 Fastest MVP v1 (no complexity, no vector DB)
 

@@ -57,7 +57,11 @@ def extract_sources_from_query(query_text: str) -> List[Dict[str, Any]]:
 
 
 @technical_trace
-def query_rag(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION) -> str:
+def query_rag(
+    query_text: str,
+    prompt_version: str = DEFAULT_PROMPT_VERSION,
+    enriched_context: Optional[Dict[str, str]] = None
+) -> str:
     request_id = rag_logger.generate_request_id()
     retrieval_start = time.time()
     
@@ -85,16 +89,24 @@ def query_rag(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION) -> 
             latency_ms=retrieval_latency,
         )
 
-        # Get system prompt based on version
-        system_prompt = SYSTEM_PROMPTS.get(prompt_version, SYSTEM_PROMPTS[DEFAULT_PROMPT_VERSION])
+        # Get system prompt (from enriched context if provided, else from config)
+        if enriched_context:
+            system_prompt = enriched_context.get("system_prompt", SYSTEM_PROMPTS.get(prompt_version, SYSTEM_PROMPTS[DEFAULT_PROMPT_VERSION]))
+        else:
+            system_prompt = SYSTEM_PROMPTS.get(prompt_version, SYSTEM_PROMPTS[DEFAULT_PROMPT_VERSION])
         
-        # Build context
-        context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+        # Build retrieval context from search results
+        retrieval_context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
         
         # Build prompt text
         prompt_parts = [system_prompt]
         
-        prompt_parts.append(f"\nContext:\n{context_text}\n\nQuestion: {query_text}")
+        # Add conversation context if provided
+        if enriched_context and enriched_context.get("context"):
+            prompt_parts.append(f"\n\nPrevious conversation:\n{enriched_context['context']}")
+        
+        # Add retrieval context and current question
+        prompt_parts.append(f"\n\nContext:\n{retrieval_context_text}\n\nQuestion: {query_text}")
         prompt = "".join(prompt_parts)
         
         # Generate response
