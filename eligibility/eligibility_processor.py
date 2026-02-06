@@ -150,7 +150,9 @@ class EligibilityProcessor:
         # Check if eligible
         if self.data_loader.is_eligible(account_number):
             return {
+                "account_number": account_number,
                 "account_number_hash": account_hash,
+                "customer_name": "Unknown",
                 "status": "ELIGIBLE",
                 "reasons": [],
             }
@@ -169,7 +171,9 @@ class EligibilityProcessor:
 
         # Cannot confirm
         return {
+            "account_number": account_number,
             "account_number_hash": account_hash,
+            "customer_name": "Unknown",
             "status": "CANNOT_CONFIRM",
             "reasons": [],
         }
@@ -263,8 +267,15 @@ class EligibilityProcessor:
                     }
                 )
 
+        # Get customer name from reasons record
+        customer_name = reasons_record.get("CUSTOMERNAMES", "Unknown")
+        if not customer_name or customer_name == "":
+            customer_name = "Unknown"
+        
         return {
+            "account_number": account_number,
             "account_number_hash": account_hash,
+            "customer_name": customer_name,
             "status": "NOT_ELIGIBLE",
             "reasons": self._validate_and_enrich_reasons(
                 extracted_reasons,

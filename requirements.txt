@@ -9,3 +9,6 @@ pytest
 boto3
 streamlit # Web UI framework
 openpyxl
+sqlalchemy # Database ORM
+pydantic # Data validation
+python-dotenv # Environment variables

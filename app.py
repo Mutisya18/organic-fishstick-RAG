@@ -20,12 +20,27 @@ from utils.logger.rag_logging import RAGLogger
 from utils.logger.session_manager import SessionManager
 from rag.config.prompts import SYSTEM_PROMPTS, DEFAULT_PROMPT_VERSION
 from eligibility.orchestrator import EligibilityOrchestrator
-from utils.context.conversation_memory import ConversationMemory
+from database import db as database_manager
+from database.initialization import print_database_error_guide
 
 
 # Initialize logging
 rag_logger = RAGLogger()
 session_manager = SessionManager()
+
+# Initialize database (lazy: actual connection happens on first use)
+try:
+    database_manager.initialize(debug=False)
+    database_available = True
+except Exception as e:
+    rag_logger.log_error(
+        request_id="startup",
+        error_type="DatabaseInitError",
+        error_message=f"Database module failed to initialize: {str(e)}",
+        traceback_str=traceback.format_exc(),
+    )
+    database_available = False
+    print_database_error_guide()
 
 # Initialize eligibility orchestrator (will raise if config/data files missing)
 try:
@@ -49,43 +64,204 @@ def initialize_session_state():
         st.session_state.session_id = session_manager._session_id
     if "error_message" not in st.session_state:
         st.session_state.error_message = None
-    if "conversation_memory" not in st.session_state:
-        st.session_state.conversation_memory = ConversationMemory(session_id=session_manager._session_id)
+    if "conversation_id" not in st.session_state:
+        st.session_state.conversation_id = None
+
+
+def _get_reason_friendly_title(reason_code: str) -> str:
+    """
+    Map reason code to friendly display title.
+    
+    Args:
+        reason_code: Internal reason code.
+    
+    Returns:
+        Friendly display title.
+    """
+    title_map = {
+        "JOINT_ACCOUNT_EXCLUSION": "Joint Account Status",
+        "AVERAGE_BALANCE_EXCLUSION": "Average Balance",
+        "DPD_ARREARS_EXCLUSION": "DPD Arrears",
+        "ELMA_EXCLUSION": "ELMA Eligibility",
+        "MANDATE_EXCLUSION": "Mandate/Signing Authority",
+        "CLASSIFICATION_EXCLUSION": "Customer Classification",
+        "LINKED_BASE_EXCLUSION": "Linked Base Account",
+        "CUSTOMER_VINTAGE_EXCLUSION": "Customer Vintage",
+        "DORMANCY_INACTIVE_EXCLUSION": "Account Activity Status",
+        "TURNOVER_EXCLUSION": "Customer Turnover",
+        "RECENCY_EXCLUSION": "Recent Banking Patterns"
+    }
+    return title_map.get(reason_code, reason_code)
+
+
+def _substitute_evidence_placeholders(template: str, evidence: Dict[str, Any]) -> str:
+    """
+    Substitute placeholders in evidence template with actual values.
+    
+    Args:
+        template: Template string with {field_name} placeholders.
+        evidence: Dictionary with field values.
+    
+    Returns:
+        Formatted string with substituted values.
+    """
+    result = template
+    for key, value in evidence.items():
+        placeholder = "{" + key + "}"
+        result = result.replace(placeholder, str(value))
+    return result
+
+
+def _build_inline_evidence(reason_code: str, evidence: Dict[str, Any], evidence_display_rules: Dict[str, Any]) -> str:
+    """
+    Build inline evidence string using evidence display rules.
+    
+    Args:
+        reason_code: Internal reason code.
+        evidence: Evidence dictionary from reason object.
+        evidence_display_rules: Configuration for evidence display.
+    
+    Returns:
+        Formatted inline evidence string (empty if no evidence).
+    """
+    display_rules = evidence_display_rules.get("display_rules", {})
+    rule = display_rules.get(reason_code, {})
+    
+    # If no evidence exists, return empty string
+    if rule.get("has_evidence") is False:
+        return ""
+    
+    # Get format template
+    format_template = rule.get("format_template", [])
+    if not format_template:
+        return ""
+    
+    # Check for required fields
+    required_fields = rule.get("required_fields", [])
+    for field in required_fields:
+        if field not in evidence or evidence[field] is None or evidence[field] == "":
+            return rule.get("missing_error", "Evidence unavailable")
+    
+    # Build evidence parts using template
+    evidence_parts = []
+    for template in format_template:
+        formatted = _substitute_evidence_placeholders(template, evidence)
+        if formatted and formatted.strip():
+            evidence_parts.append(formatted)
+    
+    # Join with " – " for compact inline display
+    return " – ".join(evidence_parts)
 
 
 def format_eligibility_response(payload: Dict[str, Any]) -> str:
     """
-    Format eligibility payload into readable markdown response.
+    Format eligibility payload into v1.1 compliant UI output.
+    
+    Implements structured, scannable layout with:
+    - Account headers (Customer Name, Account Number, Status)
+    - Numbered reasons in order received
+    - Inline evidence next to reason titles
+    - Per-reason next steps
+    - Proper separations per v1.1 spec
     
     Args:
         payload: Eligibility payload from orchestrator.
     
     Returns:
-        Formatted markdown string.
+        Formatted markdown string (v1.1 compliant).
     """
-    response = "## Eligibility Check Results\n\n"
+    # Load evidence display rules
+    try:
+        from eligibility.config_loader import ConfigLoader
+        config_loader = ConfigLoader()
+        evidence_display_rules = config_loader.get_evidence_display_rules()
+    except Exception:
+        evidence_display_rules = {"display_rules": {}}
     
-    summary = payload.get("summary", {})
-    response += f"**Total Accounts Checked**: {summary.get('total_accounts', 0)}\n\n"
-    
+    response_lines = []
     accounts = payload.get("accounts", [])
-    for account_data in accounts:
-        status = account_data.get("status", "UNKNOWN")
-        status_emoji = "✅" if status == "ELIGIBLE" else "❌" if status == "NOT_ELIGIBLE" else "❓"
-        response += f"{status_emoji} **Status**: {status}\n\n"
-        
-        reasons = account_data.get("reasons", [])
-        if reasons:
-            response += "**Reasons**:\n"
-            for reason in reasons:
-                response += f"- **{reason.get('code', 'Unknown')}**: {reason.get('meaning', '')}\n"
-                if reason.get('next_steps'):
-                    response += "  - **Next Steps**:\n"
-                    for step in reason.get('next_steps', []):
-                        response += f"    - {step.get('action', '')} (Owner: {step.get('owner', 'Unknown')})\n"
-            response += "\n"
     
-    return response
+    if not accounts:
+        return "No accounts found in results."
+    
+    for account_idx, account in enumerate(accounts):
+        # ===== ACCOUNT HEADER =====
+        customer_name = account.get("customer_name", "Unknown")
+        account_number = account.get("account_number", "Unknown")
+        status = account.get("status", "UNKNOWN")
+        
+        response_lines.append(f"Customer Name: {customer_name}")
+        response_lines.append("")
+        response_lines.append(f"Account Number: {account_number}")
+        response_lines.append("")
+        response_lines.append(f"Status: {status}")
+        response_lines.append("")
+        
+        # ===== REASONS SECTION =====
+        reasons = account.get("reasons", [])
+        
+        if not reasons:
+            # No reasons - account is ELIGIBLE or CANNOT_CONFIRM
+            if status == "ELIGIBLE":
+                response_lines.append("✅ Customer is eligible for loan limit.")
+            elif status == "CANNOT_CONFIRM":
+                response_lines.append("Account not found in eligibility database.")
+            response_lines.append("")
+        else:
+            # Render Reasons header
+            response_lines.append("Reasons")
+            response_lines.append("---")
+            
+            # Render each reason
+            for reason_idx, reason in enumerate(reasons):
+                reason_number = reason_idx + 1
+                reason_code = reason.get("code", "UNKNOWN")
+                
+                # Build title with inline evidence
+                friendly_title = _get_reason_friendly_title(reason_code)
+                evidence = reason.get("evidence", {})
+                inline_evidence = _build_inline_evidence(
+                    reason_code,
+                    evidence,
+                    evidence_display_rules
+                )
+                
+                # Format title line
+                if inline_evidence:
+                    response_lines.append(f"{reason_number}. {friendly_title} ({inline_evidence})")
+                else:
+                    response_lines.append(f"{reason_number}. {friendly_title}")
+                
+                # Add meaning
+                meaning = reason.get("meaning", "")
+                if meaning:
+                    response_lines.append(meaning)
+                
+                # Add next steps
+                next_steps = reason.get("next_steps", [])
+                if next_steps:
+                    response_lines.append("")
+                    response_lines.append("Next Steps")
+                    for step in next_steps:
+                        action = step.get("action", "")
+                        owner = step.get("owner", "")
+                        if owner:
+                            response_lines.append(f"- {action} (Owner: {owner})")
+                        else:
+                            response_lines.append(f"- {action}")
+                
+                # Add separator between reasons
+                if reason_idx < len(reasons) - 1:
+                    response_lines.append("---")
+                
+                response_lines.append("")
+        
+        # ===== ACCOUNT SEPARATOR =====
+        if account_idx < len(accounts) - 1:
+            response_lines.append("==================== NEXT ACCOUNT ====================")
+            response_lines.append("")
+    
+    return "\n".join(response_lines)
 
 
 def get_user_friendly_error_message(error_type: str, error_message: str) -> str:
@@ -112,14 +288,13 @@ def get_user_friendly_error_message(error_type: str, error_message: str) -> str:
     return error_map.get(error_type, error_message or "An unknown error occurred. Please try again.")
 
 
-def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION, conversation_memory: Optional[ConversationMemory] = None) -> Dict[str, Any]:
+def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION) -> Dict[str, Any]:
     """
     Process user query through RAG pipeline.
     
     Args:
         query_text: User's query string.
         prompt_version: System prompt version to use.
-        conversation_memory: Optional conversation memory instance for context.
     
     Returns:
         Dictionary with response, error status, metadata, and sources.
@@ -140,10 +315,6 @@ def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION,
         "eligibility_payload": None,
     }
     
-    # Add user message to conversation memory
-    if conversation_memory:
-        conversation_memory.add_message("user", query_text, request_id=request_id)
-    
     # Check if this is an eligibility question
     if eligibility_available:
         try:
@@ -161,11 +332,6 @@ def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION,
                 result["success"] = True
                 result["response"] = response_text
                 result["latency_ms"] = (time.time() - start_time) * 1000
-                
-                # Add assistant response to conversation memory
-                if conversation_memory:
-                    conversation_memory.add_message("assistant", response_text, request_id=request_id)
-                
                 return result
         except Exception as e:
             # Log eligibility error but continue with RAG
@@ -182,15 +348,11 @@ def process_query(query_text: str, prompt_version: str = DEFAULT_PROMPT_VERSION,
         sources = extract_sources_from_query(query_text)
         result["sources"] = sources
         
-        # Call RAG query function with prompt version and conversation memory
-        response = query_rag(query_text, prompt_version=prompt_version, conversation_memory=conversation_memory)
+        # Call RAG query function with prompt version
+        response = query_rag(query_text, prompt_version=prompt_version)
         result["success"] = True
         result["response"] = response
         result["latency_ms"] = (time.time() - start_time) * 1000
-        
-        # Add assistant response to conversation memory
-        if conversation_memory:
-            conversation_memory.add_message("assistant", response, request_id=request_id)
         
         rag_logger.log_warning(
             request_id=request_id,
@@ -316,6 +478,19 @@ def main():
     # Initialize session state
     initialize_session_state()
     
+    # Check database availability
+    if not database_available:
+        st.error(
+            "❌ **Database System Unavailable**\n\n"
+            "The chat history system is not responding. "
+            "Please check the logs or contact support.\n\n"
+            "**Troubleshooting:**\n"
+            "1. Check if database service is running\n"
+            "2. Verify DATABASE_TYPE and DATABASE_URL in .env\n"
+            "3. Check logs directory for detailed errors\n"
+        )
+        st.stop()
+    
     # Sidebar config
     with st.sidebar:
         st.header("⚙️ Settings")
@@ -324,15 +499,6 @@ def main():
             options=list(SYSTEM_PROMPTS.keys()),
             help="V1.0.0: Fast & simple | V1.1.0: Structured & production-quality"
         )
-        st.divider()
-        st.header("💾 Memory")
-        memory_info = st.session_state.conversation_memory.get_summary()
-        st.metric("Messages in Memory", memory_info["message_count"])
-        st.caption(f"Max: {memory_info['max_messages']} messages")
-        if st.button("Clear Memory"):
-            st.session_state.conversation_memory.clear()
-            st.session_state.chat_history = []
-            st.rerun()
         st.divider()
         st.header("ℹ️ About")
         st.markdown(
@@ -344,13 +510,25 @@ def main():
             - Citation tracking
             - Query logging
             - Error handling
-            - Conversation memory (last 10 messages)
             - Eligibility checking {'✅' if eligibility_available else '❌ (unavailable)'}
             """
         )
         st.divider()
         if st.button("Clear Chat History"):
+            # Archive current conversation if it exists
+            if st.session_state.conversation_id is not None:
+                try:
+                    database_manager.archive_conversation(st.session_state.conversation_id)
+                except Exception as e:
+                    rag_logger.log_error(
+                        request_id="session_cleanup",
+                        error_type="ConversationArchiveError",
+                        error_message=f"Failed to archive conversation: {str(e)}",
+                        traceback_str=traceback.format_exc(),
+                    )
+            # Reset session state for new conversation
             st.session_state.chat_history = []
+            st.session_state.conversation_id = None
             st.rerun()
     
     # Display chat history
@@ -365,6 +543,30 @@ def main():
     user_input = st.chat_input("Type your question here...")
     
     if user_input:
+        # Create conversation on first message if needed
+        if st.session_state.conversation_id is None:
+            try:
+                conv = database_manager.create_conversation(
+                    user_id="default_user",
+                    title=f"Chat Session {st.session_state.session_id[:8]}"
+                )
+                st.session_state.conversation_id = conv['id']
+                rag_logger.log_warning(
+                    request_id="session_init",
+                    message=f"Created new conversation: {st.session_state.conversation_id}",
+                    event_type="conversation_created",
+                )
+                print(f"[DEBUG] Created conversation: {st.session_state.conversation_id}")
+            except Exception as e:
+                rag_logger.log_error(
+                    request_id="session_init",
+                    error_type="ConversationCreationError",
+                    error_message=f"Failed to create conversation: {str(e)}",
+                    traceback_str=traceback.format_exc(),
+                )
+                st.error("Failed to create chat session. Please refresh and try again.")
+                st.stop()
+        
         # Add user message to history immediately
         st.session_state.chat_history.append({
             "role": "user",
@@ -376,11 +578,27 @@ def main():
         with st.chat_message("user"):
             st.markdown(user_input)
         
-        # Process query with selected prompt version and conversation memory
+        # Process query with selected prompt version
         with st.spinner("🔍 Searching and generating response..."):
-            result = process_query(user_input, prompt_version=prompt_version, conversation_memory=st.session_state.conversation_memory)
+            result = process_query(user_input, prompt_version=prompt_version)
         
         if result["success"]:
+            # Save user message to database
+            try:
+                print(f"[DEBUG] Saving user message to conversation: {st.session_state.conversation_id}")
+                database_manager.save_user_message(
+                    conversation_id=st.session_state.conversation_id,
+                    content=user_input,
+                    request_id=result["request_id"]
+                )
+            except Exception as e:
+                rag_logger.log_error(
+                    request_id=result["request_id"],
+                    error_type="UserMessageSaveError",
+                    error_message=f"Failed to save user message: {str(e)}",
+                    traceback_str=traceback.format_exc(),
+                )
+            
             # Display success response
             with st.chat_message("assistant"):
                 st.markdown(result["response"])
@@ -419,18 +637,60 @@ def main():
                             st.metric("Prompt Version", result["prompt_version"])
             
             # Add assistant message to history with sources
+            assistant_metadata = {
+                "request_id": result["request_id"],
+                "latency_ms": result["latency_ms"],
+                "source": "eligibility" if result["is_eligibility_flow"] else "rag",
+            }
+            
+            if result["is_eligibility_flow"]:
+                assistant_metadata["eligibility_payload"] = result["eligibility_payload"]
+            else:
+                assistant_metadata["sources"] = result["sources"]
+                assistant_metadata["prompt_version"] = result["prompt_version"]
+            
             st.session_state.chat_history.append({
                 "role": "assistant",
                 "content": result["response"],
-                "metadata": {
-                    "request_id": result["request_id"],
-                    "latency_ms": result["latency_ms"],
-                    "sources": result["sources"],
-                    "prompt_version": result["prompt_version"],
-                },
+                "metadata": assistant_metadata,
             })
+            
+            # Save assistant message to database
+            try:
+                database_manager.save_assistant_message(
+                    conversation_id=st.session_state.conversation_id,
+                    content=result["response"],
+                    request_id=result["request_id"],
+                    metadata={
+                        "latency_ms": result["latency_ms"],
+                        "source": "eligibility" if result["is_eligibility_flow"] else "rag",
+                    }
+                )
+            except Exception as e:
+                rag_logger.log_error(
+                    request_id=result["request_id"],
+                    error_type="AssistantMessageSaveError",
+                    error_message=f"Failed to save assistant message: {str(e)}",
+                    traceback_str=traceback.format_exc(),
+                )
         
         else:
+            # Save user message to database (before showing error)
+            try:
+                print(f"[DEBUG] Saving user message (error case) to conversation: {st.session_state.conversation_id}")
+                database_manager.save_user_message(
+                    conversation_id=st.session_state.conversation_id,
+                    content=user_input,
+                    request_id=result["request_id"]
+                )
+            except Exception as e:
+                rag_logger.log_error(
+                    request_id=result["request_id"],
+                    error_type="UserMessageSaveError",
+                    error_message=f"Failed to save user message: {str(e)}",
+                    traceback_str=traceback.format_exc(),
+                )
+            
             # Display error message
             error_message = get_user_friendly_error_message(
                 result["error_type"],
@@ -450,6 +710,25 @@ def main():
                     "error_type": result["error_type"],
                 },
             })
+            
+            # Save error message to database
+            try:
+                database_manager.save_assistant_message(
+                    conversation_id=st.session_state.conversation_id,
+                    content=f"⚠️ {error_message}",
+                    request_id=result["request_id"],
+                    metadata={
+                        "error_type": result["error_type"],
+                        "source": "error"
+                    }
+                )
+            except Exception as e:
+                rag_logger.log_error(
+                    request_id=result["request_id"],
+                    error_type="ErrorMessageSaveError",
+                    error_message=f"Failed to save error message: {str(e)}",
+                    traceback_str=traceback.format_exc(),
+                )
 
 
 if __name__ == "__main__":

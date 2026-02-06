@@ -96,6 +96,73 @@ ENV=prod  # For production deployment
 **Default**: `1.1.0`  
 **Versions**: See `config/prompts.py` for available versions
 
+### DATABASE_TYPE
+**Purpose**: Database type to use  
+**Default**: `sqlite`  
+**Supported**: `sqlite` (development), `postgresql` (production)  
+
+**Example**:
+```bash
+DATABASE_TYPE=sqlite        # For local development
+DATABASE_TYPE=postgresql    # For production
+```
+
+### DATABASE_URL
+**Purpose**: Database connection string  
+**Default**: (auto if sqlite, empty if postgresql)  
+
+**Examples**:
+```bash
+# SQLite: stored in project root as chat_history.db
+DATABASE_URL=sqlite:///chat_history.db
+
+# PostgreSQL: 
+DATABASE_URL=postgresql://user:password@localhost:5432/chatbot_db
+```
+
+### DATABASE_TIMEOUT
+**Purpose**: How long (seconds) to wait before initializing the db  
+**Default**: `30`  
+**Notes**: Used when starting the app to allow database server to boot
+
+**Example**:
+```bash
+DATABASE_TIMEOUT=60  # Wait up to 60 seconds for DB to start
+```
+
+### DATABASE_POOL_SIZE
+**Purpose**: Connection pool size (PostgreSQL only)  
+**Default**: `5`  
+**Notes**: SQLite doesn't use connection pooling  
+
+### DATABASE_MAX_OVERFLOW
+**Purpose**: Max overflow connections beyond pool size (PostgreSQL only)  
+**Default**: `5`  
+
+### DATABASE_POOL_TIMEOUT
+**Purpose**: How long to wait for a connection from pool (seconds)  
+**Default**: `30`  
+
+### DATABASE_POOL_RECYCLE
+**Purpose**: Recycle connections after this many seconds (PostgreSQL only)  
+**Default**: `3600` (1 hour)  
+**Notes**: Prevents stale connections
+
+### DATABASE_INIT_RETRY_COUNT
+**Purpose**: How many times to retry database initialization on startup  
+**Default**: `3`  
+**Notes**: Useful when DB is starting up slowly
+
+### DATABASE_INIT_RETRY_DELAY_MS
+**Purpose**: Initial delay (ms) between retries (exponential backoff)  
+**Default**: `100`  
+**Notes**: First retry waits 100ms, second waits 200ms, third waits 400ms
+
+### DATABASE_ECHO
+**Purpose**: Log all SQL queries (debug mode)  
+**Default**: `false`  
+**Values**: `true`, `false`  
+
 ---
 
 ## Common Configurations
