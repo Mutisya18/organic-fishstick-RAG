@@ -1,9 +1,4 @@
-Great — this is actually a *really* good moment to pause and do it cleanly.
-The good news: **you do NOT need anything fancy** to build a “best” messages DB for an MVP.
 
-I’ll be opinionated and practical.
-
----
 
 ## 🥇 Best choice for MVP (and beyond)
 

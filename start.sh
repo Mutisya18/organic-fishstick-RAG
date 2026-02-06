@@ -42,6 +42,8 @@ echo "  LOG_DIR: $LOG_DIR"
 echo "  CHROMA_PATH: $CHROMA_PATH"
 echo "  DATA_PATH: $DATA_PATH"
 echo "  ELIGIBILITY_DATA_PATH: $ELIGIBILITY_DATA_PATH"
+echo "  DATABASE_TYPE: ${DATABASE_TYPE:-sqlite}"
+echo "  DATABASE_TIMEOUT: ${DATABASE_TIMEOUT:-30}s"
 echo "  ENV: $ENV"
 echo ""
 
@@ -50,6 +52,35 @@ mkdir -p "$LOG_DIR"
 mkdir -p "$CHROMA_PATH"
 mkdir -p "$DATA_PATH"
 mkdir -p "$ELIGIBILITY_DATA_PATH"
+
+# Check database availability (with retry logic)
+echo "🔍 Checking database availability..."
+python -c "
+import sys
+from database.initialization import check_database_availability, print_database_error_guide
+from database.core.config import is_sqlite
+
+db_timeout = ${DATABASE_TIMEOUT:-30}
+db_retries = ${DATABASE_INIT_RETRY_COUNT:-3}
+db_delay = ${DATABASE_INIT_RETRY_DELAY_MS:-100}
+
+if not check_database_availability(
+    timeout_seconds=db_timeout,
+    retry_count=db_retries,
+    retry_delay_ms=db_delay
+):
+    print_database_error_guide()
+    sys.exit(1)
+"
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ Database initialization failed. See error messages above."
+    exit 1
+fi
+
+echo "✅ Database is ready!"
+
 
 # Determine what to start
 case "${1:-web}" in
