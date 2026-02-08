@@ -187,8 +187,20 @@ def add_to_chroma(chunks: list[Document]):
                 batch_end = min(i + batch_size, len(new_chunks))
                 batch = new_chunks[i:batch_end]
                 batch_ids = new_chunk_ids[i:batch_end]
-                print(f"  Processing batch {i//batch_size + 1}: documents {i+1}-{batch_end}")
-                db.add_documents(batch, ids=batch_ids)
+                batch_num = i//batch_size + 1
+                print(f"  Processing batch {batch_num}: documents {i+1}-{batch_end}")
+                
+                try:
+                    print(f"[DIAGNOSTIC] Attempting to add {len(batch)} documents to Chroma...")
+                    print(f"[DIAGNOSTIC] First batch item content length: {len(batch[0].page_content)}")
+                    print(f"[DIAGNOSTIC] First batch item metadata: {batch[0].metadata}")
+                    db.add_documents(batch, ids=batch_ids)
+                    print(f"[DIAGNOSTIC] Successfully added batch {batch_num}")
+                except Exception as e:
+                    print(f"[DIAGNOSTIC] Error in batch {batch_num}: {type(e).__name__}")
+                    print(f"[DIAGNOSTIC] Error details: {str(e)}")
+                    print(f"[DIAGNOSTIC] First batch item being processed: {batch[0].metadata.get('id', 'UNKNOWN')}")
+                    raise
                 time.sleep(1)  # Brief pause between batches to prevent overwhelming the server
             
             rag_logger.log_warning(
