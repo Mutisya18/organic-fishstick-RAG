@@ -81,10 +81,120 @@ fi
 
 echo "✅ Database is ready!"
 
+# Check Ollama connectivity and binding
+echo ""
+echo "🔍 Checking Ollama availability..."
+python -c "
+import os
+import requests
+import sys
+from urllib.parse import urlparse
+
+ollama_url = os.getenv('OLLAMA_BASE_URL', 'http://localhost:11434')
+parsed = urlparse(ollama_url)
+is_remote = 'ngrok' in parsed.netloc or parsed.hostname not in ['localhost', '127.0.0.1']
+
+print(f'  OLLAMA_BASE_URL: {ollama_url}')
+print(f'  Remote tunnel: {\"yes\" if is_remote else \"no\"}')
+
+# Try to connect to configured URL
+try:
+    resp = requests.get(f'{ollama_url}/api/tags', timeout=5)
+    if resp.status_code == 200:
+        print(f'  ✅ Connected successfully')
+    else:
+        print(f'  ⚠️  Got HTTP {resp.status_code} - checking localhost fallback...')
+        # If remote fails, check localhost
+        if is_remote:
+            try:
+                local_resp = requests.get('http://localhost:11434/api/tags', timeout=3)
+                if local_resp.status_code == 200:
+                    print(f'')
+                    print(f'  🔧 DIAGNOSTIC: Ollama is reachable on localhost:11434 but NOT on {ollama_url}')
+                    print(f'')
+                    print(f'  LIKELY CAUSE: Ollama is bound to 127.0.0.1 only (localhost binding)')
+                    print(f'')
+                    print(f'  FIX: On the machine running Ollama, restart with:')
+                    print(f'    Windows:  set OLLAMA_HOST=0.0.0.0:11434 && ollama serve')
+                    print(f'    Linux:    OLLAMA_HOST=0.0.0.0:11434 ollama serve')
+                    print(f'')
+                    print(f'  This allows external access via ngrok tunnel.')
+                    sys.exit(1)
+            except Exception:
+                pass  # localhost also failed
+except requests.exceptions.ConnectionError:
+    print(f'  ❌ Cannot connect to Ollama')
+    if is_remote:
+        print(f'')
+        print(f'  LIKELY CAUSES:')
+        print(f'    1. ngrok tunnel is inactive or URL has expired')
+        print(f'    2. Remote Ollama instance is not running')
+        print(f'    3. Ollama is bound to 127.0.0.1 (localhost only) instead of 0.0.0.0')
+        print(f'')
+        print(f'  FIXES:')
+        print(f'    Option 1: Bind Ollama to all interfaces')
+        print(f'      Windows:  set OLLAMA_HOST=0.0.0.0:11434 && ollama serve')
+        print(f'      Linux:    OLLAMA_HOST=0.0.0.0:11434 ollama serve')
+        print(f'')
+        print(f'    Option 2: Restart ngrok tunnel (URL may have expired)')
+        print(f'') 
+    sys.exit(1)
+except requests.exceptions.Timeout:
+    print(f'  ❌ Ollama request timed out')
+    sys.exit(1)
+except Exception as e:
+    print(f'  ❌ Error: {type(e).__name__}: {e}')
+    sys.exit(1)
+"
+
+if [ $? -ne 0 ]; then
+    echo ""
+    exit 1
+fi
+
+# Check if RAG vector database is populated
+echo ""
+echo "🔍 Checking RAG vector database..."
+python -c "
+import os
+from pathlib import Path
+
+chroma_path = os.getenv('CHROMA_PATH', 'chroma')
+db_exists = Path(chroma_path).exists()
+db_has_content = False
+
+if db_exists:
+    # Check if database has content (chroma creates metadata.sqlite3 when populated)
+    metadata_file = Path(chroma_path) / 'chroma.sqlite3'
+    db_has_content = metadata_file.exists() and metadata_file.stat().st_size > 0
+
+if not db_has_content:
+    print('⚠️  RAG database empty or not populated.')
+    print('🔄 Auto-populating database from data files...')
+    import subprocess
+    result = subprocess.run([
+        'python', 'rag/populate_database.py'
+    ], cwd='$SCRIPT_DIR')
+    
+    if result.returncode != 0:
+        print('❌ Failed to populate RAG database.')
+        import sys
+        sys.exit(1)
+    print('✅ RAG database populated!')
+else:
+    print('✅ RAG database is populated!')
+"
+
+if [ $? -ne 0 ]; then
+    echo ""
+    echo "❌ RAG database population failed. See error messages above."
+    exit 1
+fi
 
 # Determine what to start
 case "${1:-web}" in
     web)
+        echo ""
         echo "🚀 Starting Streamlit Web UI..."
         echo "   Open: http://localhost:8501"
         streamlit run app.py

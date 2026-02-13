@@ -1,8 +1,9 @@
 """
 RAG Context Builder
 
-Builds conversation context from recent messages to enrich LLM queries.
-Retrieves last 5 messages from current conversation and formats them for injection into prompts.
+Builds conversation context from all messages to enrich LLM queries.
+Retrieves ALL messages from current conversation and formats them for injection into prompts.
+This ensures the LLM has full conversation context for better coherence and understanding.
 """
 
 from typing import Dict, Any, Optional
@@ -53,7 +54,13 @@ def build_rag_context(
         SYSTEM_PROMPTS[DEFAULT_PROMPT_VERSION]
     )
     
-    # Retrieve last 5 messages
+    import os
+    # Get configurable message limit from .env, default to 5
+    try:
+        message_limit = int(os.getenv("CONTEXT_MESSAGE_LIMIT", "5"))
+    except Exception:
+        message_limit = 5
+
     context_text = ""
     try:
         with get_session() as session:
@@ -61,27 +68,18 @@ def build_rag_context(
                 session.query(Message)
                 .filter(Message.conversation_id == conversation_id)
                 .order_by(desc(Message.created_at))
-                .limit(5)
+                .limit(message_limit)
                 .all()
             )
-            
-            # Reverse to chronological order (oldest to newest)
             messages.reverse()
-            
-            # Format as simple role:content pairs
             context_lines = []
             for msg in messages:
                 role = msg.role.value if hasattr(msg.role, 'value') else str(msg.role)
                 context_lines.append(f"{role}: {msg.content}")
-            
             context_text = "\n".join(context_lines)
-    
     except Exception as e:
-        # If there's any error retrieving context, log it but continue
-        # The RAG query should still work, just without prior context
         print(f"[WARNING] Failed to retrieve conversation context: {str(e)}")
         context_text = ""
-    
     return {
         "system_prompt": system_prompt,
         "context": context_text,
