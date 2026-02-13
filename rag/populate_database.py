@@ -15,13 +15,20 @@ load_dotenv()
 # Add parent directory to path to import modules from root
 sys_path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from rag.get_embedding_function import get_embedding_function
+from rag.config.provider_config import (
+    ACTIVE_EMBEDDING_PROVIDER,
+    DATA_PATH,
+    DEBUG_MODE,
+)
+from rag.config.index_registry import (
+    get_collection_name_for_provider,
+    get_embedding_space_id,
+    get_chroma_path_for_provider,
+)
 from langchain_chroma import Chroma
 from utils.logger.rag_logging import RAGLogger
 from utils.logger.trace import technical_trace
 
-
-CHROMA_PATH = os.getenv("CHROMA_PATH", "rag/chroma")
-DATA_PATH = os.getenv("DATA_PATH", "rag/data")
 rag_logger = RAGLogger()
 
 
@@ -156,20 +163,43 @@ def split_documents(documents: list[Document]):
 
 @technical_trace
 def add_to_chroma(chunks: list[Document]):
+    """
+    Add documents to Chroma vector database.
+    
+    Routes to the correct provider-specific collection based on configuration.
+    Adds embedding_space_id to chunk metadata to prevent mixed-space errors.
+    """
     request_id = rag_logger.generate_request_id()
     try:
-        # Load the existing database.
+        # Get the active embedding provider configuration
+        embedding_provider = ACTIVE_EMBEDDING_PROVIDER
+        collection_name = get_collection_name_for_provider(embedding_provider)
+        chroma_path = get_chroma_path_for_provider(embedding_provider)
+        embedding_space_id = get_embedding_space_id(embedding_provider)
+        
+        if DEBUG_MODE:
+            print(f"[INGEST] Active embedding provider: {embedding_provider}")
+            print(f"[INGEST] Collection name: {collection_name}")
+            print(f"[INGEST] Chroma path: {chroma_path}")
+            print(f"[INGEST] Embedding space ID: {embedding_space_id}")
+        
+        # Load the embedding function
+        embedding_function = get_embedding_function()
+        
+        # Load the existing database for this collection
         db = Chroma(
-            persist_directory=CHROMA_PATH, embedding_function=get_embedding_function()
+            persist_directory=chroma_path,
+            collection_name=collection_name,
+            embedding_function=embedding_function
         )
 
-        # Calculate Page IDs.
-        chunks_with_ids = calculate_chunk_ids(chunks)
+        # Calculate Page IDs and add embedding_space_id to metadata
+        chunks_with_ids = calculate_chunk_ids(chunks, embedding_space_id)
 
         # Add or Update the documents.
         existing_items = db.get(include=[])  # IDs are always included by default
         existing_ids = set(existing_items["ids"])
-        print(f"Number of existing documents in DB: {len(existing_ids)}")
+        print(f"Number of existing documents in collection '{collection_name}': {len(existing_ids)}")
 
         # Only add documents that don't exist in the DB.
         new_chunks = []
@@ -178,7 +208,7 @@ def add_to_chroma(chunks: list[Document]):
                 new_chunks.append(chunk)
 
         if len(new_chunks):
-            print(f"👉 Adding new documents: {len(new_chunks)}")
+            print(f"👉 Adding new documents to '{collection_name}': {len(new_chunks)}")
             new_chunk_ids = [chunk.metadata["id"] for chunk in new_chunks]
             
             # Process documents in batches to avoid timeout issues with ngrok
@@ -191,11 +221,13 @@ def add_to_chroma(chunks: list[Document]):
                 print(f"  Processing batch {batch_num}: documents {i+1}-{batch_end}")
                 
                 try:
-                    print(f"[DIAGNOSTIC] Attempting to add {len(batch)} documents to Chroma...")
-                    print(f"[DIAGNOSTIC] First batch item content length: {len(batch[0].page_content)}")
-                    print(f"[DIAGNOSTIC] First batch item metadata: {batch[0].metadata}")
+                    if DEBUG_MODE:
+                        print(f"[DIAGNOSTIC] Attempting to add {len(batch)} documents to Chroma...")
+                        print(f"[DIAGNOSTIC] First batch item content length: {len(batch[0].page_content)}")
+                        print(f"[DIAGNOSTIC] First batch item metadata: {batch[0].metadata}")
                     db.add_documents(batch, ids=batch_ids)
-                    print(f"[DIAGNOSTIC] Successfully added batch {batch_num}")
+                    if DEBUG_MODE:
+                        print(f"[DIAGNOSTIC] Successfully added batch {batch_num}")
                 except Exception as e:
                     print(f"[DIAGNOSTIC] Error in batch {batch_num}: {type(e).__name__}")
                     print(f"[DIAGNOSTIC] Error details: {str(e)}")
@@ -205,7 +237,7 @@ def add_to_chroma(chunks: list[Document]):
             
             rag_logger.log_warning(
                 request_id=request_id,
-                message=f"Added {len(new_chunks)} new documents to Chroma DB",
+                message=f"Added {len(new_chunks)} new documents to Chroma DB (provider: {embedding_provider}, collection: {collection_name})",
                 event_type="documents_added_to_db",
             )
         else:
@@ -224,11 +256,20 @@ def add_to_chroma(chunks: list[Document]):
         raise
 
 
-def calculate_chunk_ids(chunks):
-
-    # This will create IDs like "data/monopoly.pdf:6:2"
-    # Page Source : Page Number : Chunk Index
-
+def calculate_chunk_ids(chunks, embedding_space_id: str):
+    """
+    Calculate unique IDs for chunks and add embedding space metadata.
+    
+    Creates IDs like "data/monopoly.pdf:6:2" (Source:Page:ChunkIndex)
+    Adds embedding_space_id to metadata to detect mixed embedding spaces.
+    
+    Args:
+        chunks: List of Document chunks
+        embedding_space_id: The unique identifier for the active embedding space
+    
+    Returns:
+        List of chunks with 'id' and 'embedding_space_id' in metadata
+    """
     last_page_id = None
     current_chunk_index = 0
 
@@ -247,15 +288,27 @@ def calculate_chunk_ids(chunks):
         chunk_id = f"{current_page_id}:{current_chunk_index}"
         last_page_id = current_page_id
 
-        # Add it to the page meta-data.
+        # Add metadata
         chunk.metadata["id"] = chunk_id
+        chunk.metadata["embedding_space_id"] = embedding_space_id
 
     return chunks
 
 
 def clear_database():
-    if os.path.exists(CHROMA_PATH):
-        shutil.rmtree(CHROMA_PATH)
+    """
+    Clear the Chroma database for the active embedding provider.
+    
+    Only deletes the collection directory for the currently configured provider,
+    leaving other provider collections intact for A/B testing.
+    """
+    chroma_path = get_chroma_path_for_provider(ACTIVE_EMBEDDING_PROVIDER)
+    if os.path.exists(chroma_path):
+        print(f"🗑️  Clearing Chroma database at: {chroma_path}")
+        shutil.rmtree(chroma_path)
+        print(f"✅ Cleared database for provider: {ACTIVE_EMBEDDING_PROVIDER}")
+    else:
+        print(f"ℹ️  No database found at: {chroma_path}")
 
 
 if __name__ == "__main__":
