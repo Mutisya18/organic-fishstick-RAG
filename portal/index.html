@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NCBA Operations Assistant</title>
+  <link rel="stylesheet" href="/static/css/themes.css">
+  <link rel="stylesheet" href="/static/css/main.css">
+</head>
+<body>
+  <div class="container">
+    <div class="top-nav">
+      <div class="logo-section">
+        <div class="logo">N</div>
+        <div class="logo-text">
+          <h1>NCBA OPERATIONS ASSISTANT</h1>
+          <p class="logo-subtitle">Retail Banking</p>
+        </div>
+      </div>
+      <div class="nav-center" id="navCenter">
+        <span class="header-conversation-title" id="headerConversationTitle">Operations Assistant Chat</span>
+      </div>
+      <div class="profile-section">
+        <button class="profile-btn" id="profileBtn">
+          <div class="profile-avatar" id="profileAvatar">SM</div>
+          <div class="profile-info">
+            <div class="name" id="profileName">Stanley Mutisya</div>
+            <div class="role" id="profileRole">Relationship Manager</div>
+          </div>
+          <svg class="chevron" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+          </svg>
+        </button>
+        <div class="profile-dropdown" id="profileDropdown">
+          <div class="profile-dropdown-header">
+            <div class="name" id="dropdownName">Stanley Mutisya</div>
+            <div class="role" id="dropdownRole">Relationship Manager</div>
+            <div class="dept">Retail Banking</div>
+          </div>
+          <div class="profile-dropdown-menu">
+            <button class="dropdown-item" id="darkModeToggle">
+              <div class="toggle-container">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <svg class="dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+                  </svg>
+                  <span>Dark Mode</span>
+                </div>
+                <div class="toggle-switch" id="toggleSwitch">
+                  <div class="toggle-circle"></div>
+                </div>
+              </div>
+            </button>
+            <button class="dropdown-item">
+              <svg class="dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+              </svg>
+              <span>Settings</span>
+            </button>
+            <button class="dropdown-item danger">
+              <svg class="dropdown-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+              </svg>
+              <span>Sign Out</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="main-layout">
+      <aside class="sidebar">
+        <div class="sidebar-section">
+          <h2>Conversations</h2>
+          <button class="new-chat-btn hidden" id="newChatBtn" disabled title="Single conversation mode">
+            <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            New Chat
+          </button>
+        </div>
+        <div class="conversations-list">
+          <div class="conversation-item active" id="sidebarConversation">
+            <div class="conversation-header">
+              <svg class="conversation-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+              </svg>
+              <div style="flex: 1; min-width: 0;">
+                <div class="conversation-title" id="sidebarConversationTitle">Operations Assistant Chat</div>
+                <div class="conversation-time" id="sidebarConversationTime">Active Session</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="tools-section">
+          <h2>Tools</h2>
+          <button class="tool-item" type="button"><span class="tool-icon" style="color: #F59E0B;">📝</span><span>Notes</span></button>
+          <button class="tool-item" type="button"><span class="tool-icon" style="color: #10B981;">✓</span><span>Tasks</span></button>
+          <button class="tool-item" type="button"><span class="tool-icon" style="color: #8B5CF6;">🎫</span><span>Raise Ticket</span></button>
+        </div>
+      </aside>
+
+      <div class="main-content">
+        <div class="messages-container" id="messagesContainer">
+          <div class="welcome-content" id="welcomeContent">
+            <div class="welcome-header">
+              <h1 id="welcomeTitle">Hello, Stanley</h1>
+              <p class="welcome-subtitle" id="welcomeSubtitle">What can I help you with?</p>
+            </div>
+            <div class="quick-actions" id="quickActions">
+              <div class="action-card" data-card="1" data-prompt="Check eligibility for account 12345678">
+                <svg class="action-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                </svg>
+                <h3>Check Customer Eligibility</h3>
+                <p>Verify if a customer qualifies for our products</p>
+              </div>
+              <div class="action-card" data-card="2" data-prompt="What are the digital loan eligibility criteria?">
+                <svg class="action-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+                </svg>
+                <h3>Search Policy Documents</h3>
+                <p>Find information across internal policies</p>
+              </div>
+              <div class="action-card" data-card="3" data-prompt="Tell me about digital loan products and requirements">
+                <svg class="action-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/>
+                </svg>
+                <h3>Ask About Products</h3>
+                <p>Learn about our digital loan offerings</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="input-container">
+          <div class="input-wrapper">
+            <textarea id="inputField" class="input-field" placeholder="Ask anything…" rows="1"></textarea>
+            <button id="sendBtn" class="send-btn" disabled type="button">
+              <svg class="send-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+              </svg>
+            </button>
+          </div>
+          <div class="input-disclaimer">
+            AI responses may be inaccurate — please verify with policy documents.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/static/js/state.js"></script>
+  <script src="/static/js/api.js"></script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

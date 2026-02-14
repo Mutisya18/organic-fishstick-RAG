@@ -1,0 +1,29 @@
+/* Theme variables – light (default) and dark */
+:root {
+  --bg-primary: #F9FAFB;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #F3F4F6;
+  --border-primary: #E5E7EB;
+  --border-secondary: #D1D5DB;
+  --text-primary: #111827;
+  --text-secondary: #6B7280;
+  --text-tertiary: #9CA3AF;
+  --accent-primary: #2563EB;
+  --accent-hover: #1D4ED8;
+  --user-message: #DBEAFE;
+  --content-max-width: 640px;
+}
+
+body.dark-mode {
+  --bg-primary: #111827;
+  --bg-secondary: #1F2937;
+  --bg-tertiary: #374151;
+  --border-primary: #374151;
+  --border-secondary: #4B5563;
+  --text-primary: #F9FAFB;
+  --text-secondary: #D1D5DB;
+  --text-tertiary: #9CA3AF;
+  --accent-primary: #3B82F6;
+  --accent-hover: #2563EB;
+  --user-message: rgba(37, 99, 235, 0.3);
+}
