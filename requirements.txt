@@ -12,3 +12,5 @@ openpyxl
 sqlalchemy # Database ORM
 pydantic # Data validation
 python-dotenv # Environment variables
+google-genai 
+langchain-google-genai

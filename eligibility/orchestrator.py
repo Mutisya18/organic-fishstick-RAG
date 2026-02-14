@@ -25,7 +25,6 @@ from utils.logger.rag_logging import RAGLogger
 from utils.logger.session_manager import SessionManager
 from eligibility.config_loader import ConfigLoader
 from eligibility.data_loader import DataLoader
-from eligibility.intent_detector import IntentDetector
 from eligibility.account_extractor import AccountExtractor
 from eligibility.account_validator import AccountValidator
 from eligibility.eligibility_processor import EligibilityProcessor
@@ -57,7 +56,6 @@ class EligibilityOrchestrator:
         try:
             self.config_loader = ConfigLoader()
             self.data_loader = DataLoader()
-            self.intent_detector = IntentDetector()
             self.account_extractor = AccountExtractor()
             self.account_validator = AccountValidator()
             self.eligibility_processor = EligibilityProcessor()
@@ -84,13 +82,18 @@ class EligibilityOrchestrator:
 
     def process_message(
         self,
-        user_message: str
+        user_message: str,
+        skip_intent_detection: bool = False,
     ) -> Optional[Dict[str, Any]]:
         """
         Process user message through entire eligibility flow.
 
+        When skip_intent_detection is True (e.g. from command module),
+        intent detection is bypassed and the flow starts at account extraction.
+
         Args:
-            user_message: User's message to analyze.
+            user_message: User's message to analyze (or args string with account).
+            skip_intent_detection: If True, skip intent detection (command path).
 
         Returns:
             LLM payload (dict) if eligibility question, None otherwise.
@@ -109,27 +112,28 @@ class EligibilityOrchestrator:
                 message="Starting eligibility flow"
             )
 
-            # STEP 1: Intent Detection
-            is_eligibility_check, message_hash = (
-                self.intent_detector.detect(user_message)
-            )
-
-            if not is_eligibility_check:
+            # STEP 1: Intent Detection (skipped when invoked via command)
+            if not skip_intent_detection:
+                from eligibility.intent_detector import IntentDetector
+                intent_detector = IntentDetector()
+                is_eligibility_check, message_hash = (
+                    intent_detector.detect(user_message)
+                )
+                if not is_eligibility_check:
+                    self.rag_logger.log(
+                        request_id=request_id,
+                        event="intent_not_eligibility",
+                        severity="DEBUG",
+                        message="Message is not an eligibility question",
+                        context={"message_hash": message_hash}
+                    )
+                    return None
                 self.rag_logger.log(
                     request_id=request_id,
-                    event="intent_not_eligibility",
+                    event="intent_eligibility_detected",
                     severity="DEBUG",
-                    message="Message is not an eligibility question",
-                    context={"message_hash": message_hash}
+                    message="Eligibility question detected"
                 )
-                return None
-
-            self.rag_logger.log(
-                request_id=request_id,
-                event="intent_eligibility_detected",
-                severity="DEBUG",
-                message="Eligibility question detected"
-            )
 
             # STEP 2: Account Extraction
             account_numbers = self.account_extractor.extract(

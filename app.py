@@ -13,7 +13,7 @@ import streamlit as st
 import time
 import traceback
 import json
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 
 from rag.query_data import query_rag, extract_sources_from_query
 from utils.logger.rag_logging import RAGLogger
@@ -22,6 +22,7 @@ from utils.context.context_builder import build_rag_context
 from rag.config.prompts import SYSTEM_PROMPTS, DEFAULT_PROMPT_VERSION
 from eligibility.orchestrator import EligibilityOrchestrator
 from database import db as database_manager
+from utils.commands import parse_command, validate_command_args, get_registry, get_validation_error_tooltip, dispatch_command
 from database.initialization import print_database_error_guide
 
 
@@ -265,6 +266,27 @@ def format_eligibility_response(payload: Dict[str, Any]) -> str:
     return "\n".join(response_lines)
 
 
+def validate_message_can_send(message: str) -> Tuple[bool, Optional[str]]:
+    """
+    Check if the message can be sent (for command mode: block send until required args provided).
+
+    Returns:
+        (can_send, error_tooltip). If can_send is False, error_tooltip is the message to show.
+    """
+    parsed = parse_command(message)
+    if not parsed.is_command:
+        return True, None
+    if parsed.parse_errors:
+        return False, parsed.parse_errors[0] if parsed.parse_errors else "Invalid command."
+    registry = get_registry()
+    if parsed.command_name not in registry.get("_by_command", {}):
+        return False, "I don't recognize that command."
+    tooltip = get_validation_error_tooltip(parsed.command_name, parsed.args_raw, registry)
+    if tooltip:
+        return False, tooltip
+    return True, None
+
+
 def get_user_friendly_error_message(error_type: str, error_message: str) -> str:
     """
     Convert technical errors to user-friendly messages.
@@ -321,34 +343,45 @@ def process_query(
         "eligibility_payload": None,
     }
     
-    # Check if this is an eligibility question
-    if eligibility_available:
+    # Command-first routing: if message is a slash command, dispatch (no intent detection)
+    parsed = parse_command(query_text)
+    if parsed.is_command and not parsed.parse_errors:
         try:
-            eligibility_payload = eligibility_orchestrator.process_message(query_text)
-            if eligibility_payload:
+            cmd_result = dispatch_command(
+                parsed.command_name,
+                parsed.args_raw,
+                get_registry(),
+            )
+            if cmd_result.get("payload") is not None:
                 result["is_eligibility_flow"] = True
-                result["eligibility_payload"] = eligibility_payload
-                rag_logger.log_warning(
-                    request_id=request_id,
-                    message="Eligibility flow triggered",
-                    event_type="eligibility_detected",
-                )
-                # For eligibility flow, format the response as readable text
-                response_text = format_eligibility_response(eligibility_payload)
-                result["success"] = True
+                result["eligibility_payload"] = cmd_result["payload"]
+                if cmd_result.get("response"):
+                    response_text = cmd_result["response"]
+                else:
+                    response_text = format_eligibility_response(cmd_result["payload"])
+                result["success"] = cmd_result.get("success", True)
                 result["response"] = response_text
                 result["latency_ms"] = (time.time() - start_time) * 1000
                 return result
+            if not cmd_result.get("success") and cmd_result.get("response"):
+                result["success"] = False
+                result["error"] = cmd_result.get("error_message") or cmd_result["response"]
+                result["response"] = cmd_result["response"]
+                result["latency_ms"] = (time.time() - start_time) * 1000
+                return result
         except Exception as e:
-            # Log eligibility error but continue with RAG
             rag_logger.log_error(
                 request_id=request_id,
-                error_type="EligibilityProcessError",
+                error_type="CommandDispatchError",
                 error_message=str(e),
                 traceback_str=traceback.format_exc(),
             )
-            # Fall through to normal RAG query
-    
+            result["success"] = False
+            result["error"] = str(e)
+            result["response"] = "I couldn't complete that command. Please try again."
+            result["latency_ms"] = (time.time() - start_time) * 1000
+            return result
+
     try:
         # Extract sources
         sources = extract_sources_from_query(query_text)
@@ -551,206 +584,212 @@ def main():
     
     # Chat input
     user_input = st.chat_input("Type your question here...")
-    
+
     if user_input:
-        # Create conversation on first message if needed
-        if st.session_state.conversation_id is None:
-            try:
-                conv = database_manager.create_conversation(
-                    user_id="default_user",
-                    title=f"Chat Session {st.session_state.session_id[:8]}"
-                )
-                st.session_state.conversation_id = conv['id']
-                rag_logger.log_warning(
-                    request_id="session_init",
-                    message=f"Created new conversation: {st.session_state.conversation_id}",
-                    event_type="conversation_created",
-                )
-                print(f"[DEBUG] Created conversation: {st.session_state.conversation_id}")
-            except Exception as e:
-                rag_logger.log_error(
-                    request_id="session_init",
-                    error_type="ConversationCreationError",
-                    error_message=f"Failed to create conversation: {str(e)}",
-                    traceback_str=traceback.format_exc(),
-                )
-                st.error("Failed to create chat session. Please refresh and try again.")
-                st.stop()
-        
-        # Add user message to history immediately
-        st.session_state.chat_history.append({
-            "role": "user",
-            "content": user_input,
-            "metadata": None,
-        })
-        
-        # Render user message
-        with st.chat_message("user"):
-            st.markdown(user_input)
-        
-        # Build enriched context from conversation history
-        enriched_context = build_rag_context(
-            conversation_id=st.session_state.conversation_id,
-            user_message=user_input,
-            db_manager=database_manager,
-            prompt_version=prompt_version
-        )
-        
-        # Process query with selected prompt version and context
-        with st.spinner("🔍 Searching and generating response..."):
-            result = process_query(
-                user_input,
-                prompt_version=prompt_version,
-                enriched_context=enriched_context
-            )
-        
-        if result["success"]:
-            # Save user message to database
-            try:
-                print(f"[DEBUG] Saving user message to conversation: {st.session_state.conversation_id}")
-                database_manager.save_user_message(
-                    conversation_id=st.session_state.conversation_id,
-                    content=user_input,
-                    request_id=result["request_id"]
-                )
-            except Exception as e:
-                rag_logger.log_error(
-                    request_id=result["request_id"],
-                    error_type="UserMessageSaveError",
-                    error_message=f"Failed to save user message: {str(e)}",
-                    traceback_str=traceback.format_exc(),
-                )
-            
-            # Display success response
-            with st.chat_message("assistant"):
-                st.markdown(result["response"])
-                
-                # Show sources and details in single expander
-                if result["is_eligibility_flow"]:
-                    # For eligibility flow, show raw payload in expander
-                    with st.expander("📋 Eligibility Details"):
-                        st.json(result["eligibility_payload"])
-                        st.divider()
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("Request ID", result["request_id"][:8] + "...")
-                        with col2:
-                            st.metric("Latency", f"{result['latency_ms']:.2f} ms")
-                else:
-                    # For RAG flow, show sources and details
-                    with st.expander("📚 Sources & Details"):
-                        # Display sources
-                        st.markdown("**Sources Used:**")
-                        for idx, source in enumerate(result["sources"], 1):
-                            st.markdown(f"**{idx}. {source['source']}**")
-                            st.caption(f"Page: {source['page']}")
-                            st.caption(f"Preview: {source['content_preview']}")
-                        
-                        # Divider between sources and details
-                        st.divider()
-                        
-                        # Display technical details as footnote
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            st.metric("Request ID", result["request_id"][:8] + "...")
-                        with col2:
-                            st.metric("Latency", f"{result['latency_ms']:.2f} ms")
-                        with col3:
-                            st.metric("Prompt Version", result["prompt_version"])
-            
-            # Add assistant message to history with sources
-            assistant_metadata = {
-                "request_id": result["request_id"],
-                "latency_ms": result["latency_ms"],
-                "source": "eligibility" if result["is_eligibility_flow"] else "rag",
-            }
-            
-            if result["is_eligibility_flow"]:
-                assistant_metadata["eligibility_payload"] = result["eligibility_payload"]
-            else:
-                assistant_metadata["sources"] = result["sources"]
-                assistant_metadata["prompt_version"] = result["prompt_version"]
-            
-            st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": result["response"],
-                "metadata": assistant_metadata,
-            })
-            
-            # Save assistant message to database
-            try:
-                database_manager.save_assistant_message(
-                    conversation_id=st.session_state.conversation_id,
-                    content=result["response"],
-                    request_id=result["request_id"],
-                    metadata={
-                        "latency_ms": result["latency_ms"],
-                        "source": "eligibility" if result["is_eligibility_flow"] else "rag",
-                    }
-                )
-            except Exception as e:
-                rag_logger.log_error(
-                    request_id=result["request_id"],
-                    error_type="AssistantMessageSaveError",
-                    error_message=f"Failed to save assistant message: {str(e)}",
-                    traceback_str=traceback.format_exc(),
-                )
-        
+        # Block send when a command requires args (e.g. /check_eligibility needs account number)
+        can_send, send_error_tooltip = validate_message_can_send(user_input)
+        if not can_send and send_error_tooltip:
+            st.error(send_error_tooltip)
+            # Do not add to history or process
         else:
-            # Save user message to database (before showing error)
-            try:
-                print(f"[DEBUG] Saving user message (error case) to conversation: {st.session_state.conversation_id}")
-                database_manager.save_user_message(
-                    conversation_id=st.session_state.conversation_id,
-                    content=user_input,
-                    request_id=result["request_id"]
-                )
-            except Exception as e:
-                rag_logger.log_error(
-                    request_id=result["request_id"],
-                    error_type="UserMessageSaveError",
-                    error_message=f"Failed to save user message: {str(e)}",
-                    traceback_str=traceback.format_exc(),
-                )
+            # Create conversation on first message if needed
+            if st.session_state.conversation_id is None:
+                try:
+                    conv = database_manager.create_conversation(
+                        user_id="default_user",
+                        title=f"Chat Session {st.session_state.session_id[:8]}"
+                    )
+                    st.session_state.conversation_id = conv['id']
+                    rag_logger.log_warning(
+                        request_id="session_init",
+                        message=f"Created new conversation: {st.session_state.conversation_id}",
+                        event_type="conversation_created",
+                    )
+                    print(f"[DEBUG] Created conversation: {st.session_state.conversation_id}")
+                except Exception as e:
+                    rag_logger.log_error(
+                        request_id="session_init",
+                        error_type="ConversationCreationError",
+                        error_message=f"Failed to create conversation: {str(e)}",
+                        traceback_str=traceback.format_exc(),
+                    )
+                    st.error("Failed to create chat session. Please refresh and try again.")
+                    st.stop()
             
-            # Display error message
-            error_message = get_user_friendly_error_message(
-                result["error_type"],
-                result["error"],
-            )
-            with st.chat_message("assistant"):
-                st.error(f"⚠️ {error_message}")
-                with st.expander("🔧 Technical Details"):
-                    st.code(f"Error Type: {result['error_type']}\n\n{result['error']}", language="text")
-            
-            # Add error message to history
+            # Add user message to history immediately
             st.session_state.chat_history.append({
-                "role": "assistant",
-                "content": f"⚠️ {error_message}",
-                "metadata": {
-                    "request_id": result["request_id"],
-                    "error_type": result["error_type"],
-                },
+                "role": "user",
+                "content": user_input,
+                "metadata": None,
             })
             
-            # Save error message to database
-            try:
-                database_manager.save_assistant_message(
-                    conversation_id=st.session_state.conversation_id,
-                    content=f"⚠️ {error_message}",
-                    request_id=result["request_id"],
-                    metadata={
+            # Render user message
+            with st.chat_message("user"):
+                st.markdown(user_input)
+            
+            # Build enriched context from conversation history
+            enriched_context = build_rag_context(
+                conversation_id=st.session_state.conversation_id,
+                user_message=user_input,
+                db_manager=database_manager,
+                prompt_version=prompt_version
+            )
+            
+            # Process query with selected prompt version and context
+            with st.spinner("🔍 Searching and generating response..."):
+                result = process_query(
+                    user_input,
+                    prompt_version=prompt_version,
+                    enriched_context=enriched_context
+                )
+            
+            if result["success"]:
+                # Save user message to database
+                try:
+                    print(f"[DEBUG] Saving user message to conversation: {st.session_state.conversation_id}")
+                    database_manager.save_user_message(
+                        conversation_id=st.session_state.conversation_id,
+                        content=user_input,
+                        request_id=result["request_id"]
+                    )
+                except Exception as e:
+                    rag_logger.log_error(
+                        request_id=result["request_id"],
+                        error_type="UserMessageSaveError",
+                        error_message=f"Failed to save user message: {str(e)}",
+                        traceback_str=traceback.format_exc(),
+                    )
+                
+                # Display success response
+                with st.chat_message("assistant"):
+                    st.markdown(result["response"])
+                    
+                    # Show sources and details in single expander
+                    if result["is_eligibility_flow"]:
+                        # For eligibility flow, show raw payload in expander
+                        with st.expander("📋 Eligibility Details"):
+                            st.json(result["eligibility_payload"])
+                            st.divider()
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Request ID", result["request_id"][:8] + "...")
+                            with col2:
+                                st.metric("Latency", f"{result['latency_ms']:.2f} ms")
+                    else:
+                        # For RAG flow, show sources and details
+                        with st.expander("📚 Sources & Details"):
+                            # Display sources
+                            st.markdown("**Sources Used:**")
+                            for idx, source in enumerate(result["sources"], 1):
+                                st.markdown(f"**{idx}. {source['source']}**")
+                                st.caption(f"Page: {source['page']}")
+                                st.caption(f"Preview: {source['content_preview']}")
+                            
+                            # Divider between sources and details
+                            st.divider()
+                            
+                            # Display technical details as footnote
+                            col1, col2, col3 = st.columns(3)
+                            with col1:
+                                st.metric("Request ID", result["request_id"][:8] + "...")
+                            with col2:
+                                st.metric("Latency", f"{result['latency_ms']:.2f} ms")
+                            with col3:
+                                st.metric("Prompt Version", result["prompt_version"])
+                
+                # Add assistant message to history with sources
+                assistant_metadata = {
+                    "request_id": result["request_id"],
+                    "latency_ms": result["latency_ms"],
+                    "source": "eligibility" if result["is_eligibility_flow"] else "rag",
+                }
+                
+                if result["is_eligibility_flow"]:
+                    assistant_metadata["eligibility_payload"] = result["eligibility_payload"]
+                else:
+                    assistant_metadata["sources"] = result["sources"]
+                    assistant_metadata["prompt_version"] = result["prompt_version"]
+                
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": result["response"],
+                    "metadata": assistant_metadata,
+                })
+                
+                # Save assistant message to database
+                try:
+                    database_manager.save_assistant_message(
+                        conversation_id=st.session_state.conversation_id,
+                        content=result["response"],
+                        request_id=result["request_id"],
+                        metadata={
+                            "latency_ms": result["latency_ms"],
+                            "source": "eligibility" if result["is_eligibility_flow"] else "rag",
+                        }
+                    )
+                except Exception as e:
+                    rag_logger.log_error(
+                        request_id=result["request_id"],
+                        error_type="AssistantMessageSaveError",
+                        error_message=f"Failed to save assistant message: {str(e)}",
+                        traceback_str=traceback.format_exc(),
+                    )
+            
+            else:
+                # Save user message to database (before showing error)
+                try:
+                    print(f"[DEBUG] Saving user message (error case) to conversation: {st.session_state.conversation_id}")
+                    database_manager.save_user_message(
+                        conversation_id=st.session_state.conversation_id,
+                        content=user_input,
+                        request_id=result["request_id"]
+                    )
+                except Exception as e:
+                    rag_logger.log_error(
+                        request_id=result["request_id"],
+                        error_type="UserMessageSaveError",
+                        error_message=f"Failed to save user message: {str(e)}",
+                        traceback_str=traceback.format_exc(),
+                    )
+                
+                # Display error message
+                error_message = get_user_friendly_error_message(
+                    result["error_type"],
+                    result["error"],
+                )
+                with st.chat_message("assistant"):
+                    st.error(f"⚠️ {error_message}")
+                    with st.expander("🔧 Technical Details"):
+                        st.code(f"Error Type: {result['error_type']}\n\n{result['error']}", language="text")
+                
+                # Add error message to history
+                st.session_state.chat_history.append({
+                    "role": "assistant",
+                    "content": f"⚠️ {error_message}",
+                    "metadata": {
+                        "request_id": result["request_id"],
                         "error_type": result["error_type"],
-                        "source": "error"
-                    }
-                )
-            except Exception as e:
-                rag_logger.log_error(
-                    request_id=result["request_id"],
-                    error_type="ErrorMessageSaveError",
-                    error_message=f"Failed to save error message: {str(e)}",
-                    traceback_str=traceback.format_exc(),
-                )
+                    },
+                })
+                
+                # Save error message to database
+                try:
+                    database_manager.save_assistant_message(
+                        conversation_id=st.session_state.conversation_id,
+                        content=f"⚠️ {error_message}",
+                        request_id=result["request_id"],
+                        metadata={
+                            "error_type": result["error_type"],
+                            "source": "error"
+                        }
+                    )
+                except Exception as e:
+                    rag_logger.log_error(
+                        request_id=result["request_id"],
+                        error_type="ErrorMessageSaveError",
+                        error_message=f"Failed to save error message: {str(e)}",
+                        traceback_str=traceback.format_exc(),
+                    )
 
 
 if __name__ == "__main__":

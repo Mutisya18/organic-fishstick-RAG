@@ -1,0 +1,34 @@
+{
+  "commands": [
+    {
+      "command": "/check_eligibility",
+      "id": "check_eligibility",
+      "description": "Check customer eligibility by 10-digit account number",
+      "handler": "check_eligibility",
+      "args_schema": {
+        "account": {
+          "required": true,
+          "type": "account",
+          "description": "10-digit account number"
+        }
+      },
+      "examples": ["/check_eligibility 1234567890"],
+      "enabled": true
+    },
+    {
+      "command": "/eligibility",
+      "id": "check_eligibility",
+      "description": "Check eligibility (use: /eligibility check &lt;account number&gt;)",
+      "handler": "check_eligibility",
+      "args_schema": {
+        "account": {
+          "required": true,
+          "type": "account",
+          "description": "10-digit account number"
+        }
+      },
+      "examples": ["/eligibility check 1234567890"],
+      "enabled": true
+    }
+  ]
+}
