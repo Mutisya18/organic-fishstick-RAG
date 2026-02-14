@@ -279,4 +279,152 @@ class ConversationRepository(BaseRepository[Conversation]):
         
         except Exception as e:
             logger.error(f"Failed to count conversations for {user_id}: {str(e)}")
-            raise DatabaseError(f"Failed to count conversations: {str(e)}") from e
+            raise DatabaseError(f"Failed to count conversations: {str(e)}") from e    
+    def mark_opened(self, conversation_id: str) -> Dict[str, Any]:
+        """
+        Update conversation's last_opened_at to current time.
+        
+        Called when user switches to a conversation.
+        Updates the "viewing activity" timestamp for relevance calculation.
+        
+        Args:
+            conversation_id: Conversation ID to mark as opened
+            
+        Returns:
+            Updated Conversation dict
+            
+        Raises:
+            ConversationNotFoundError: If not found
+        """
+        logger.debug(f"Marking conversation {conversation_id} as opened")
+        
+        try:
+            with get_session() as session:
+                conv = session.query(Conversation).filter_by(
+                    id=conversation_id
+                ).first()
+                
+                assert conv is not None, f"Conversation {conversation_id} not found"
+                
+                conv.mark_opened()
+                session.add(conv)
+                session.flush()
+                
+                conv_dict = conv.to_dict()
+            
+            return conv_dict
+        
+        except AssertionError as e:
+            raise ConversationNotFoundError(str(e))
+        except Exception as e:
+            logger.error(f"Failed to mark conversation opened {conversation_id}: {str(e)}")
+            raise DatabaseError(f"Failed to mark conversation opened: {str(e)}") from e
+    
+    def hide(self, conversation_id: str) -> Dict[str, Any]:
+        """
+        Mark conversation as hidden (system-imposed, for auto-limiting).
+        
+        Sets is_hidden=True, hidden_at=now(), auto_hidden=True.
+        Conversation remains in database but becomes invisible.
+        
+        Args:
+            conversation_id: Conversation ID to hide
+            
+        Returns:
+            Updated Conversation dict
+            
+        Raises:
+            ConversationNotFoundError: If not found
+        """
+        logger.info(f"Hiding conversation {conversation_id}")
+        
+        try:
+            with get_session() as session:
+                conv = session.query(Conversation).filter_by(
+                    id=conversation_id
+                ).first()
+                
+                assert conv is not None, f"Conversation {conversation_id} not found"
+                
+                conv.hide()
+                session.add(conv)
+                session.flush()
+                
+                conv_dict = conv.to_dict()
+            
+            return conv_dict
+        
+        except AssertionError as e:
+            raise ConversationNotFoundError(str(e))
+        except Exception as e:
+            logger.error(f"Failed to hide conversation {conversation_id}: {str(e)}")
+            raise DatabaseError(f"Failed to hide conversation: {str(e)}") from e
+    
+    def unhide(self, conversation_id: str) -> Dict[str, Any]:
+        """
+        Mark conversation as unhidden (restore visibility).
+        
+        Sets is_hidden=False, hidden_at=None.
+        (Future feature: admin panel to recover hidden conversations)
+        
+        Args:
+            conversation_id: Conversation ID to unhide
+            
+        Returns:
+            Updated Conversation dict
+            
+        Raises:
+            ConversationNotFoundError: If not found
+        """
+        logger.info(f"Unhiding conversation {conversation_id}")
+        
+        try:
+            with get_session() as session:
+                conv = session.query(Conversation).filter_by(
+                    id=conversation_id
+                ).first()
+                
+                assert conv is not None, f"Conversation {conversation_id} not found"
+                
+                conv.unhide()
+                session.add(conv)
+                session.flush()
+                
+                conv_dict = conv.to_dict()
+            
+            return conv_dict
+        
+        except AssertionError as e:
+            raise ConversationNotFoundError(str(e))
+        except Exception as e:
+            logger.error(f"Failed to unhide conversation {conversation_id}: {str(e)}")
+            raise DatabaseError(f"Failed to unhide conversation: {str(e)}") from e
+    
+    def count_visible_for_user(self, user_id: str) -> int:
+        """
+        Count non-hidden conversations for a user.
+        
+        Only counts conversations where is_hidden=False.
+        
+        Args:
+            user_id: User ID
+            
+        Returns:
+            Count of visible conversations
+            
+        Raises:
+            DatabaseError: On query failure
+        """
+        assert user_id, "user_id must not be empty"
+        
+        try:
+            with get_session() as session:
+                return session.query(Conversation).filter(
+                    Conversation.user_id == user_id,
+                    Conversation.is_hidden == False,
+                    Conversation.status == ConversationStatus.ACTIVE
+                ).count()
+        
+        except Exception as e:
+            logger.error(f"Failed to count visible conversations for {user_id}: {str(e)}")
+            raise DatabaseError(f"Failed to count visible conversations: {str(e)}") from e

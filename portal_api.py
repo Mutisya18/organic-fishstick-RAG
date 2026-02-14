@@ -7,7 +7,9 @@ beyond the shared backend facade.
 """
 
 import traceback
+import logging
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
@@ -15,8 +17,22 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from database import db as database_manager
+from database.services.conversation_service import (
+    get_visible_conversations,
+    count_visible_conversations,
+    apply_auto_hide_if_needed
+)
+from database.services.audit_logger import audit_logger
+from database.repository.conversation_repository import ConversationRepository
 from backend.chat import run_chat, validate_message
 from rag.config.prompts import DEFAULT_PROMPT_VERSION
+from rag.config.conversation_limits import (
+    get_config as get_conversation_config,
+    CONVERSATION_WARNING_THRESHOLD,
+    MAX_ACTIVE_CONVERSATIONS
+)
+
+logger = logging.getLogger(__name__)
 
 # Base directory for portal assets (parent of portal_api.py)
 BASE_DIR = Path(__file__).resolve().parent
@@ -63,6 +79,16 @@ async def root():
     if not index_path.exists():
         raise HTTPException(status_code=500, detail="Portal index.html not found")
     return FileResponse(index_path, media_type="text/html")
+
+
+@app.get("/api/v2/config/limits")
+async def api_config_limits():
+    """Get conversation limit configuration."""
+    try:
+        config = get_conversation_config()
+        return config
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Config fetch failed: {str(e)}")
 
 
 @app.post("/api/init")
@@ -120,6 +146,194 @@ async def api_messages(conversation_id: str = ""):
 class ChatSendBody(BaseModel):
     content: str
     conversation_id: str = "default"
+
+
+# ============================================================================
+# V2 API: Multi-Conversation Management
+# ============================================================================
+
+class CreateConversationRequest(BaseModel):
+    """Request to create a new conversation."""
+    title: Optional[str] = None
+    user_id: str = "default_user"
+
+
+class ConversationDetail(BaseModel):
+    """Conversation list item."""
+    id: str
+    title: Optional[str]
+    last_message_at: Optional[str]
+    last_opened_at: Optional[str]
+    message_count: int
+    preview: Optional[str] = None
+    status: str
+    is_hidden: bool
+    created_at: str
+    updated_at: str
+
+
+class ConversationListResponse(BaseModel):
+    """Response for conversation list."""
+    conversations: list
+    visible_count: int
+    max_allowed: int
+    warning: bool = False
+
+
+class CreateConversationResponse(BaseModel):
+    """Response for conversation creation."""
+    conversation: dict
+    visible_count: int
+    max_allowed: int
+    warning: bool = False
+    auto_hidden: Optional[dict] = None
+
+
+@app.get("/api/v2/conversations")
+async def api_v2_conversations_list(user_id: str = "default_user"):
+    """
+    Get visible conversations for a user, sorted by relevance.
+    
+    Query Parameters:
+    - user_id: User ID (default: "default_user")
+    
+    Response:
+    - conversations: List of conversation objects
+    - visible_count: Number of visible conversations
+    - max_allowed: Maximum allowed conversations
+    - warning: If true, user is at warning threshold
+    
+    Returns 200 with conversation list.
+    """
+    assert user_id, "user_id required"
+    
+    try:
+        # Get visible conversations
+        conversations = get_visible_conversations(user_id, limit=MAX_ACTIVE_CONVERSATIONS)
+        
+        # Convert to dicts
+        conv_dicts = [c.to_dict() for c in conversations]
+        
+        # Count visible
+        visible_count = count_visible_conversations(user_id)
+        
+        # Check if user is at warning threshold
+        warning = visible_count >= CONVERSATION_WARNING_THRESHOLD
+        
+        logger.info(f"Listed {visible_count} conversations for user_id={user_id}")
+        
+        return {
+            "conversations": conv_dicts,
+            "visible_count": visible_count,
+            "max_allowed": MAX_ACTIVE_CONVERSATIONS,
+            "warning": warning
+        }
+    
+    except Exception as e:
+        logger.error(f"Error listing conversations: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/v2/conversations")
+async def api_v2_conversations_create(body: CreateConversationRequest):
+    """
+    Create a new conversation.
+    
+    If creating this conversation exceeds the limit, the lowest-scoring 
+    conversation is automatically hidden.
+    
+    Request:
+    - title: Optional conversation title
+    - user_id: User ID (default: "default_user")
+    
+    Response:
+    - conversation: Created conversation object
+    - visible_count: Number of visible conversations after creation
+    - max_allowed: Maximum allowed conversations
+    - warning: If true, user has reached warning threshold
+    - auto_hidden: If hiding occurred, metadata about hidden conversation
+    
+    Returns 201 if successful.
+    """
+    user_id = body.user_id or "default_user"
+    assert user_id, "user_id required"
+    
+    try:
+        # Create conversation via database manager
+        title = body.title or "New Conversation"
+        new_conv = database_manager.create_conversation(
+            user_id=user_id,
+            title=title
+        )
+        
+        visible_count_before = count_visible_conversations(user_id)
+        
+        # Apply auto-hiding if needed
+        auto_hide_metadata = apply_auto_hide_if_needed(
+            user_id=user_id,
+            active_conversation_id=new_conv.get("id")
+        )
+        
+        visible_count_after = count_visible_conversations(user_id)
+        warning = visible_count_after >= CONVERSATION_WARNING_THRESHOLD
+        
+        logger.info(
+            f"Created conversation {new_conv.get('id')} for user_id={user_id} "
+            f"(visible: {visible_count_before} -> {visible_count_after})"
+        )
+        
+        response = {
+            "conversation": new_conv,
+            "visible_count": visible_count_after,
+            "max_allowed": MAX_ACTIVE_CONVERSATIONS,
+            "warning": warning
+        }
+        
+        if auto_hide_metadata:
+            response["auto_hidden"] = auto_hide_metadata
+        
+        return response
+    
+    except Exception as e:
+        logger.error(f"Error creating conversation: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.patch("/api/v2/conversations/{conversation_id}/open")
+async def api_v2_conversations_open(conversation_id: str):
+    """
+    Mark a conversation as opened (update last_opened_at).
+    
+    Called when user switches to a conversation in the UI.
+    Updates the viewing activity timestamp for relevance calculation.
+    
+    Path Parameters:
+    - conversation_id: Conversation ID
+    
+    Response:
+    - id: Conversation ID
+    - last_opened_at: Updated timestamp
+    
+    Returns 200 if successful, 404 if conversation not found.
+    """
+    assert conversation_id, "conversation_id required"
+    
+    try:
+        repo = ConversationRepository()
+        updated_conv = repo.mark_opened(conversation_id)
+        
+        logger.debug(f"Marked conversation {conversation_id} as opened")
+        
+        return {
+            "id": updated_conv.get("id"),
+            "last_opened_at": updated_conv.get("last_opened_at")
+        }
+    
+    except Exception as e:
+        logger.error(f"Error marking conversation as opened: {str(e)}")
+        if "not found" in str(e).lower():
+            raise HTTPException(status_code=404, detail="Conversation not found")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/chat/send")
