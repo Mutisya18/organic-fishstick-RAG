@@ -597,6 +597,21 @@ body.dark-mode .input-wrapper:focus-within {
   border: 1px solid rgba(255, 255, 255, 0.25);
 }
 
+.input-wrapper--error {
+  border-color: #DC2626 !important;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.25) !important;
+  animation: inputErrorFlash 0.4s ease-out;
+}
+
+@keyframes inputErrorFlash {
+  0% {
+    box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.5);
+  }
+  100% {
+    box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.25);
+  }
+}
+
 .input-field {
   flex: 1;
   min-height: 36px;

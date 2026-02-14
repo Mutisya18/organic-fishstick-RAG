@@ -15,7 +15,9 @@
   const welcomeTitle = document.getElementById("welcomeTitle");
   const welcomeSubtitle = document.getElementById("welcomeSubtitle");
   const headerConversationTitle = document.getElementById("headerConversationTitle");
+  const inputWrapper = document.querySelector(".input-wrapper");
 
+  var DEFAULT_PLACEHOLDER = "Ask anything…";
   var WELCOME_PHRASES = [
     "What can I help you with?",
     "What's on your mind today?",
@@ -97,40 +99,75 @@
     setTimeout(callback || (function () {}), 900);
   }
 
+  function showInputError(message) {
+    var msg = message || "Invalid input.";
+    if (inputWrapper) inputWrapper.classList.add("input-wrapper--error");
+    if (inputField) {
+      inputField.placeholder = msg;
+      inputField.value = ""; /* clear so placeholder is visible */
+      inputField.style.height = "auto";
+      inputField.classList.remove("scrollable");
+      if (sendBtn) sendBtn.disabled = true;
+    }
+    if (inputWrapper) {
+      clearInputError.flashTimer = setTimeout(function () {
+        inputWrapper.classList.remove("input-wrapper--error");
+        clearInputError.flashTimer = null;
+      }, 1200);
+    }
+  }
+
+  function clearInputError() {
+    if (clearInputError.flashTimer) {
+      clearTimeout(clearInputError.flashTimer);
+      clearInputError.flashTimer = null;
+    }
+    if (inputWrapper) inputWrapper.classList.remove("input-wrapper--error");
+    if (inputField) inputField.placeholder = DEFAULT_PLACEHOLDER;
+  }
+
   function sendMessage(text) {
     const t = (text || (inputField && inputField.value)).trim();
     if (!t) return;
 
-    function doSend() {
-      hideWelcome();
-      addMessage("user", t);
-      if (inputField) {
-        inputField.value = "";
-        inputField.style.height = "auto";
-        inputField.classList.remove("scrollable");
-        sendBtn && (sendBtn.disabled = true);
+    api.validate(t).then(function (result) {
+      if (!result.valid) {
+        showInputError(result.message || "Invalid input.");
+        return;
       }
-      showTypingIndicator();
-      api.sendMessage(t).then(function (data) {
-        hideTypingIndicator();
-        const response = (data && data.response) || "No response.";
-        const meta = data && data.is_eligibility_flow ? "Eligibility" : "AI Assistant";
-        addMessage("assistant", response, meta);
-        appendMessage({ role: "user", content: t });
-        appendMessage({ role: "assistant", content: response });
-      }).catch(function (err) {
-        hideTypingIndicator();
-        const msg = (err && err.message) || (err.body && (err.body.detail || JSON.stringify(err.body))) || "Something went wrong.";
-        addMessage("assistant", "Error: " + msg, "Error");
-      });
-    }
+      clearInputError();
 
-    if (!hasStartedChat) {
-      hasStartedChat = true;
-      slideOutCards(doSend);
-    } else {
-      doSend();
-    }
+      function doSend() {
+        hideWelcome();
+        addMessage("user", t);
+        if (inputField) {
+          inputField.value = "";
+          inputField.style.height = "auto";
+          inputField.classList.remove("scrollable");
+          sendBtn && (sendBtn.disabled = true);
+        }
+        showTypingIndicator();
+        api.sendMessage(t).then(function (data) {
+          hideTypingIndicator();
+          const response = (data && data.response) || "No response.";
+          const meta = data && data.is_eligibility_flow ? "Eligibility" : "AI Assistant";
+          addMessage("assistant", response, meta);
+          appendMessage({ role: "user", content: t });
+          appendMessage({ role: "assistant", content: response });
+        }).catch(function (err) {
+          hideTypingIndicator();
+          const msg = (err && err.message) || (err.body && (err.body.detail || JSON.stringify(err.body))) || "Something went wrong.";
+          addMessage("assistant", "Error: " + msg, "Error");
+        });
+      }
+
+      if (!hasStartedChat) {
+        hasStartedChat = true;
+        slideOutCards(doSend);
+      } else {
+        doSend();
+      }
+    });
   }
 
   // Profile dropdown
@@ -162,9 +199,11 @@
     });
   }
 
-  // Input: auto-resize, Enter to send
+  // Input: auto-resize, Enter to send, clear validation error on focus/input
   if (inputField) {
+    inputField.addEventListener("focus", clearInputError);
     inputField.addEventListener("input", function () {
+      clearInputError();
       this.style.height = "auto";
       this.style.height = Math.min(this.scrollHeight, 160) + "px";
       this.classList.toggle("scrollable", this.scrollHeight > 160);

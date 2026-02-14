@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from database import db as database_manager
-from backend.chat import run_chat
+from backend.chat import run_chat, validate_message
 from rag.config.prompts import DEFAULT_PROMPT_VERSION
 
 # Base directory for portal assets (parent of portal_api.py)
@@ -76,6 +76,18 @@ async def api_init():
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Init failed: {str(e)}")
+
+
+class ValidateBody(BaseModel):
+    content: str = ""
+
+
+@app.post("/api/chat/validate")
+async def api_chat_validate(body: ValidateBody):
+    """Validate message before send (e.g. command args). Returns valid + message for placeholder."""
+    text = (body.content or "").strip()
+    valid, error_message = validate_message(text)
+    return {"valid": valid, "message": error_message if not valid else None}
 
 
 @app.get("/api/messages")

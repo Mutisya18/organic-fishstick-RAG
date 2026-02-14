@@ -6,15 +6,44 @@ Used by app.py (Streamlit) and portal_api.py (FastAPI). No UI dependencies.
 
 import time
 import traceback
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from rag.query_data import query_rag, extract_sources_from_query
 from utils.logger.rag_logging import RAGLogger
 from utils.context.context_builder import build_rag_context
 from rag.config.prompts import DEFAULT_PROMPT_VERSION
-from utils.commands import parse_command, dispatch_command, get_registry
+from utils.commands import (
+    parse_command,
+    dispatch_command,
+    get_registry,
+    get_validation_error_tooltip,
+)
 
 rag_logger = RAGLogger()
+
+
+def validate_message(content: str) -> Tuple[bool, Optional[str]]:
+    """
+    Check if the message can be sent (for command mode: block until required args provided).
+
+    Returns:
+        (valid, error_message). If valid is False, error_message is the text to show in the UI
+        (e.g. placeholder). If valid is True, error_message is None.
+    """
+    if not (content or "").strip():
+        return False, "Please enter a message."
+    parsed = parse_command(content)
+    if not parsed.is_command:
+        return True, None
+    if parsed.parse_errors:
+        return False, (parsed.parse_errors[0] if parsed.parse_errors else "Invalid command.")
+    registry = get_registry()
+    if parsed.command_name not in registry.get("_by_command", {}):
+        return False, "Unknown command."
+    tooltip = get_validation_error_tooltip(parsed.command_name, parsed.args_raw, registry)
+    if tooltip:
+        return False, tooltip
+    return True, None
 
 
 def _get_reason_friendly_title(reason_code: str) -> str:

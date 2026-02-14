@@ -22,6 +22,16 @@ const api = {
     return data;
   },
 
+  async validate(content) {
+    const res = await fetch("/api/chat/validate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content: content || "" }),
+    });
+    const data = await res.json();
+    return { valid: !!data.valid, message: data.message || null };
+  },
+
   async sendMessage(text) {
     const conversationId = getConversationId();
     const res = await fetch("/api/chat/send", {
