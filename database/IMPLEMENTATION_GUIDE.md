@@ -545,7 +545,7 @@ class DatabaseEngine:
 
 // Usage in app.py startup:
 IF running_locally:
-    db_url = "sqlite:///./chat_history.db"
+    db_url = "sqlite:///./organic-fishstick.db"
 ELSE:
     db_url = get_from_config('DATABASE_URL')  // PostgreSQL URL from env
 

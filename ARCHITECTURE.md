@@ -520,7 +520,7 @@ CONTEXT_MESSAGE_LIMIT=5                 # Configurable context window
 **Database:**
 ```
 DATABASE_TYPE=sqlite
-DATABASE_URL=sqlite:///chat_history.db
+DATABASE_URL=sqlite:///organic-fishstick.db
 DATABASE_TIMEOUT=30
 DATABASE_POOL_SIZE=5
 DATABASE_INIT_RETRY_COUNT=3
@@ -615,7 +615,7 @@ MAX_AGE_SECONDS=3600
 ┌─ Developer Machine (Windows/Linux/Mac)
 │  ├─ Ollama (local, 0.0.0.0:11434)
 │  ├─ Streamlit (8501)
-│  ├─ SQLite (chat_history.db)
+│  ├─ SQLite (organic-fishstick.db)
 │  └─ (Optional) ngrok tunnel
 └─ Remote team access via ngrok URL
 ```

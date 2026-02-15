@@ -26,7 +26,7 @@ def get_database_url() -> str:
     Get the database URL from environment.
     
     Supports:
-    - SQLite: sqlite:///path/to/chat_history.db
+    - SQLite: sqlite:///path/to/organic-fishstick.db
     - PostgreSQL: postgresql://user:password@localhost/dbname
     
     Returns:
@@ -49,7 +49,7 @@ def get_database_url() -> str:
         if not DATABASE_URL:
             # Go up 3 levels: config.py -> core -> database -> project root
             project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-            db_path = os.path.join(project_root, "chat_history.db")
+            db_path = os.path.join(project_root, "organic-fishstick.db")
         else:
             db_path = DATABASE_URL.replace("sqlite:///", "")
         

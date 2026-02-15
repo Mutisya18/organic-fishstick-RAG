@@ -196,7 +196,7 @@ DATABASE_URL=
 DATABASE_TIMEOUT=30
 DATABASE_ECHO=false
 ```
-Database file auto-created at `/workspaces/organic-fishstick-RAG/chat_history.db`
+Database file auto-created at `/workspaces/organic-fishstick-RAG/organic-fishstick.db`
 
 ### Production (PostgreSQL)
 ```bash

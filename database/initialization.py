@@ -169,6 +169,6 @@ def print_database_error_guide() -> None:
     print("\n4. Check logs for detailed error:")
     print("   - tail -f logs/rag_*.log")
     print("\n5. Reset SQLite and try again:")
-    print("   - rm chat_history.db (if using SQLite)")
+    print("   - rm organic-fishstick.db (if using SQLite)")
     print("   - bash start.sh")
     print("\n" + "="*70 + "\n")

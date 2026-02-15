@@ -8,10 +8,14 @@
  * - enabled: Feature flag (true enables multi-conversation)
  */
 const state = {
+  auth: {
+    user: null,
+    isAuthenticated: false,
+  },
   conversationId: null,
-  user: { name: "Stanley Mutisya", role: "Relationship Manager" },
+  user: { name: "", role: "" },
   messages: [],
-  
+
   // Multi-conversation state (Phase 5+)
   conversations: {
     items: [],              // All visible conversations, sorted by relevance
@@ -34,7 +38,33 @@ function setConversationId(id) {
 }
 
 function setUser(user) {
-  state.user = user || state.user;
+  if (user) {
+    state.user = { name: user.full_name || user.email || "User", role: user.role || "" };
+  } else {
+    state.user = state.user;
+  }
+}
+
+function setAuthUser(user) {
+  state.auth.user = user || null;
+  state.auth.isAuthenticated = !!user;
+  if (user) {
+    state.user = { name: user.full_name || user.email || "User", role: "" };
+  }
+}
+
+function clearAuthUser() {
+  state.auth.user = null;
+  state.auth.isAuthenticated = false;
+  state.user = { name: "", role: "" };
+}
+
+function isAuthenticated() {
+  return state.auth.isAuthenticated;
+}
+
+function getCurrentUser() {
+  return state.auth.user || null;
 }
 
 function setMessages(messages) {

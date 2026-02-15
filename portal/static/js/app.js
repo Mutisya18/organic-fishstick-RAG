@@ -53,6 +53,9 @@
       welcomeSubtitle.textContent = WELCOME_PHRASES[idx];
     }
     if (headerConversationTitle) headerConversationTitle.textContent = "Operations Assistant Chat";
+    // Show profile section once user data is loaded
+    var profileSection = document.getElementById("profileSection");
+    if (profileSection) profileSection.style.opacity = "1";
   }
 
   function addMessage(role, text, meta) {
@@ -505,11 +508,42 @@
     }
   }
 
-  api.init().then(function () {
+  async function checkAuthAndInit() {
+    var ok = await api.checkAuth();
+    if (!ok) {
+      window.location.href = "/login";
+      return;
+    }
     applyUserToUI();
-    return initializeMultiConversation();
-  }).catch(function (err) {
-    console.error("Init failed", err);
-    applyUserToUI();
+    try {
+      await api.init();
+      applyUserToUI();
+      await initializeMultiConversation();
+    } catch (err) {
+      if (err && err.status === 401) {
+        window.location.href = "/login";
+        return;
+      }
+      console.error("Init failed", err);
+      applyUserToUI();
+    }
+  }
+
+  var signOutBtn = document.getElementById("signOutBtn");
+  if (signOutBtn) {
+    signOutBtn.addEventListener("click", function () {
+      api.logout().then(function () {
+        window.location.href = "/login";
+      });
+    });
+  }
+
+  window.addEventListener("unhandledrejection", function (event) {
+    if (event.reason && event.reason.status === 401) {
+      event.preventDefault();
+      window.location.href = "/login";
+    }
   });
+
+  checkAuthAndInit();
 })();

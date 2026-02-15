@@ -8,27 +8,27 @@ Fast access to the most common queries and operations.
 
 ### View recent conversations
 ```bash
-sqlite3 chat_history.db "SELECT id, title, message_count, created_at FROM conversations ORDER BY created_at DESC LIMIT 10;"
+sqlite3 organic-fishstick.db "SELECT id, title, message_count, created_at FROM conversations ORDER BY created_at DESC LIMIT 10;"
 ```
 
 ### Count all messages
 ```bash
-sqlite3 chat_history.db "SELECT COUNT(*) as total_messages FROM messages;"
+sqlite3 organic-fishstick.db "SELECT COUNT(*) as total_messages FROM messages;"
 ```
 
 ### View all active conversations
 ```bash
-sqlite3 chat_history.db "SELECT id, title, message_count FROM conversations WHERE status='ACTIVE';"
+sqlite3 organic-fishstick.db "SELECT id, title, message_count FROM conversations WHERE status='ACTIVE';"
 ```
 
 ### Open database interactively
 ```bash
-sqlite3 chat_history.db
+sqlite3 organic-fishstick.db
 ```
 
 ### Show all tables
 ```bash
-sqlite3 chat_history.db ".tables"
+sqlite3 organic-fishstick.db ".tables"
 ```
 
 ---
@@ -187,7 +187,7 @@ SELECT 'Archived Convs', COUNT(*) FROM conversations WHERE status='ARCHIVED';
 ### Backup (Bash)
 
 ```bash
-cp chat_history.db chat_history.db.backup.$(date +%Y%m%d_%H%M%S)
+cp organic-fishstick.db organic-fishstick.db.backup.$(date +%Y%m%d_%H%M%S)
 ```
 
 ### Export to JSON (Python)
@@ -218,10 +218,10 @@ db.shutdown()
 
 ```bash
 # Backup first!
-cp chat_history.db chat_history.db.backup
+cp organic-fishstick.db organic-fishstick.db.backup
 
 # Delete
-rm chat_history.db
+rm organic-fishstick.db
 
 # Fresh start
 source vecna/bin/activate
@@ -245,25 +245,25 @@ db.shutdown()
 ### Q: How do I view all conversations?
 **A:** 
 ```bash
-sqlite3 chat_history.db "SELECT id, title, message_count, status FROM conversations;"
+sqlite3 organic-fishstick.db "SELECT id, title, message_count, status FROM conversations;"
 ```
 
 ### Q: How do I see messages in a specific conversation?
 **A:**
 ```bash
-sqlite3 chat_history.db "SELECT role, substr(content, 1, 60) FROM messages WHERE conversation_id='CONV_ID' ORDER BY created_at;"
+sqlite3 organic-fishstick.db "SELECT role, substr(content, 1, 60) FROM messages WHERE conversation_id='CONV_ID' ORDER BY created_at;"
 ```
 
 ### Q: How do I find slow responses?
 **A:**
 ```bash
-sqlite3 chat_history.db "SELECT json_extract(msg_metadata, '$.latency_ms') as latency, substr(created_at, 12, 8) as time FROM messages WHERE json_extract(msg_metadata, '$.latency_ms') > 1000 ORDER BY latency DESC;"
+sqlite3 organic-fishstick.db "SELECT json_extract(msg_metadata, '$.latency_ms') as latency, substr(created_at, 12, 8) as time FROM messages WHERE json_extract(msg_metadata, '$.latency_ms') > 1000 ORDER BY latency DESC;"
 ```
 
 ### Q: How do I check token usage?
 **A:**
 ```bash
-sqlite3 chat_history.db "SELECT role, SUM(CAST(json_extract(msg_metadata, '$.tokens') AS NUMERIC)) as total_tokens FROM messages WHERE json_extract(msg_metadata, '$.tokens') IS NOT NULL GROUP BY role;"
+sqlite3 organic-fishstick.db "SELECT role, SUM(CAST(json_extract(msg_metadata, '$.tokens') AS NUMERIC)) as total_tokens FROM messages WHERE json_extract(msg_metadata, '$.tokens') IS NOT NULL GROUP BY role;"
 ```
 
 ### Q: How do I export data?
@@ -272,7 +272,7 @@ sqlite3 chat_history.db "SELECT role, SUM(CAST(json_extract(msg_metadata, '$.tok
 ### Q: How do I restore from backup?
 **A:**
 ```bash
-cp chat_history.db.backup chat_history.db
+cp organic-fishstick.db.backup organic-fishstick.db
 ```
 
 ---
@@ -305,7 +305,7 @@ cp chat_history.db.backup chat_history.db
 
 ```
 /workspaces/organic-fishstick-RAG/
-├── chat_history.db              # SQLite database file
+├── organic-fishstick.db              # SQLite database file
 ├── database/
 │   ├── SCHEMA.md               # Complete schema documentation
 │   ├── VIEWING_DATABASE.md     # This guide (detailed)

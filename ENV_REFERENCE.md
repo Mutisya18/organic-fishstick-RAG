@@ -113,8 +113,8 @@ DATABASE_TYPE=postgresql    # For production
 
 **Examples**:
 ```bash
-# SQLite: stored in project root as chat_history.db
-DATABASE_URL=sqlite:///chat_history.db
+# SQLite: stored in project root as organic-fishstick.db
+DATABASE_URL=sqlite:///organic-fishstick.db
 
 # PostgreSQL: 
 DATABASE_URL=postgresql://user:password@localhost:5432/chatbot_db

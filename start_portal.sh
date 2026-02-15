@@ -14,5 +14,8 @@ if [ -d venv ]; then
   source venv/bin/activate
 fi
 
+# Dev: seed test user if ENV=dev (optional; ignore errors)
+python scripts/seed_dev_user.py 2>/dev/null || true
+
 echo "Portal UI: http://localhost:8000"
 exec uvicorn portal_api:app --host 0.0.0.0 --port 8000 --reload

@@ -4,8 +4,41 @@
  */
 
 const api = {
+  async login(email, password) {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email: email || "", password: password || "" }),
+    });
+    const data = await res.json();
+    if (data.success && data.user) setAuthUser(data.user);
+    return data;
+  },
+
+  async logout() {
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    clearAuthUser();
+  },
+
+  async checkAuth() {
+    try {
+      const res = await fetch("/api/auth/me", { credentials: "include" });
+      if (!res.ok) {
+        clearAuthUser();
+        return false;
+      }
+      const data = await res.json();
+      if (data.user) setAuthUser(data.user);
+      return true;
+    } catch (e) {
+      clearAuthUser();
+      return false;
+    }
+  },
+
   async init() {
-    const res = await fetch("/api/init", { method: "POST" });
+    const res = await fetch("/api/init", { method: "POST", credentials: "include" });
     if (!res.ok) throw new Error("Init failed");
     const data = await res.json();
     setConversationId(data.conversation_id);
@@ -16,7 +49,7 @@ const api = {
   async getMessages(conversationId) {
     const id = conversationId || getConversationId();
     if (!id) return [];
-    const res = await fetch(`/api/messages?conversation_id=${encodeURIComponent(id)}`);
+    const res = await fetch(`/api/messages?conversation_id=${encodeURIComponent(id)}`, { credentials: "include" });
     if (!res.ok) return [];
     const data = await res.json();
     setMessages(data);
@@ -27,6 +60,7 @@ const api = {
     const res = await fetch("/api/chat/validate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ content: content || "" }),
     });
     const data = await res.json();
@@ -38,6 +72,7 @@ const api = {
     const res = await fetch("/api/chat/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "include",
       body: JSON.stringify({ content: text, conversation_id: conversationId || "default" }),
     });
     const data = await res.json();
@@ -56,7 +91,7 @@ const api = {
 
   async getConversationConfig() {
     try {
-      const res = await fetch("/api/v2/config/limits");
+      const res = await fetch("/api/v2/config/limits", { credentials: "include" });
       if (!res.ok) return null;
       const data = await res.json();
       setConversationConfig(data.maxConversations, data.warningThreshold);
@@ -69,7 +104,7 @@ const api = {
 
   async listConversations() {
     try {
-      const res = await fetch("/api/v2/conversations");
+      const res = await fetch("/api/v2/conversations", { credentials: "include" });
       if (!res.ok) return { conversations: [], visibleCount: 0 };
       const data = await res.json();
       setConversations(data.conversations || []);
@@ -91,6 +126,7 @@ const api = {
       const res = await fetch("/api/v2/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error("Create failed");
@@ -136,6 +172,7 @@ const api = {
       const res = await fetch(`/api/v2/conversations/${conversationId}/open`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
       });
       if (!res.ok) {
         if (res.status === 404) throw new Error("Conversation not found");

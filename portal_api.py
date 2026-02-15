@@ -6,17 +6,29 @@ Serves static portal (HTML/CSS/JS) and REST API. Uses same backend as Streamlit
 beyond the shared backend facade.
 """
 
+import json
+import os
 import traceback
 import logging
 from pathlib import Path
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, Depends, Cookie
+from fastapi.responses import FileResponse, RedirectResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from database import db as database_manager
+from auth import (
+    get_current_user,
+    authenticate,
+    create_user,
+    list_users,
+    validate_session,
+    expire_session,
+    validate_password,
+    validate_email,
+)
 from database.services.conversation_service import (
     get_visible_conversations,
     count_visible_conversations,
@@ -45,8 +57,9 @@ app = FastAPI(title="NCBA Operations Assistant Portal")
 if PORTAL_STATIC.exists():
     app.mount("/static", StaticFiles(directory=str(PORTAL_STATIC)), name="static")
 
-# Default user for portal (can be overridden by /api/init later)
-DEFAULT_USER = {"name": "Stanley Mutisya", "role": "Relationship Manager"}
+# Session cookie: 30 min; secure=False for local dev (set True behind HTTPS)
+SESSION_COOKIE_MAX_AGE = int(os.getenv("SESSION_EXPIRY_SECONDS", "1800"))
+SESSION_COOKIE_SECURE = os.getenv("ENV", "dev").lower() == "prod"
 
 
 @app.on_event("startup")
@@ -60,8 +73,9 @@ def startup():
         traceback.print_exc()
 
 
-def get_or_create_conversation(user_id: str = "default_user"):
+def get_or_create_conversation(user_id: str):
     """Get existing conversation or create one. Single conversation per user."""
+    assert user_id
     convs = database_manager.list_conversations(
         user_id, limit=1, include_archived=False
     )
@@ -72,17 +86,131 @@ def get_or_create_conversation(user_id: str = "default_user"):
     )
 
 
+# ============================================================================
+# Auth API
+# ============================================================================
+
+class LoginBody(BaseModel):
+    """Login request."""
+    email: str = ""
+    password: str = ""
+
+
+class CreateUserBody(BaseModel):
+    """Create user request (admin)."""
+    email: str = ""
+    password: str = ""
+    full_name: str = ""
+
+
+@app.post("/api/auth/login")
+async def api_auth_login(body: LoginBody):
+    """Authenticate; set HTTP-only session cookie; return success and user."""
+    email = (body.email or "").strip()
+    password = body.password or ""
+    if not email:
+        return {"success": False, "error": "Please enter a valid email address"}
+    session_id = authenticate(email, password)
+    if session_id is None:
+        return {"success": False, "error": "Invalid email or password"}
+    user = get_current_user(session_id=session_id)
+    response = JSONResponse(
+        content={
+            "success": True,
+            "user": {"email": user["email"], "full_name": user["full_name"]},
+        }
+    )
+    response.set_cookie(
+        key="session_id",
+        value=session_id,
+        httponly=True,
+        secure=SESSION_COOKIE_SECURE,
+        samesite="lax",
+        max_age=SESSION_COOKIE_MAX_AGE,
+        path="/",
+    )
+    return response
+
+
+@app.post("/api/auth/logout")
+async def api_auth_logout(session_id: str = Cookie(None)):
+    """Invalidate session and clear cookie."""
+    if session_id:
+        expire_session(session_id)
+    response = JSONResponse(content={"success": True})
+    response.delete_cookie(key="session_id", path="/")
+    return response
+
+
+@app.get("/api/auth/me")
+async def api_auth_me(user: dict = Depends(get_current_user)):
+    """Return current user (validates and extends session)."""
+    return {
+        "user": {
+            "email": user["email"],
+            "full_name": user["full_name"],
+            "last_login": user.get("last_login"),
+        }
+    }
+
+
+@app.post("/api/admin/users")
+async def api_admin_create_user(
+    body: CreateUserBody,
+    user: dict = Depends(get_current_user),
+):
+    """Create new user (authenticated user only; no role check for MVP)."""
+    email = (body.email or "").strip()
+    password = body.password or ""
+    full_name = (body.full_name or "").strip()
+    if not email:
+        raise HTTPException(status_code=400, detail="Email is required")
+    if not full_name:
+        raise HTTPException(status_code=400, detail="Full name is required")
+    ok, err = validate_password(password)
+    if not ok:
+        raise HTTPException(status_code=400, detail=err)
+    try:
+        created = create_user(email=email, password=password, full_name=full_name)
+        return JSONResponse(
+            status_code=201,
+            content={"success": True, "user": {"email": created["email"], "full_name": created["full_name"]}},
+        )
+    except ValueError as e:
+        if "already" in str(e).lower():
+            raise HTTPException(status_code=409, detail=str(e))
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/api/admin/users")
+async def api_admin_list_users(user: dict = Depends(get_current_user)):
+    """List all users (exclude password_hash)."""
+    users = list_users()
+    return {"users": users}
+
+
 @app.get("/", response_class=FileResponse)
-async def root():
-    """Serve the portal single-page app."""
+async def root(session_id: str = Cookie(None)):
+    """Serve portal if session valid; else redirect to /login."""
+    if not session_id or validate_session(session_id) is None:
+        return RedirectResponse(url="/login", status_code=302)
     index_path = PORTAL_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=500, detail="Portal index.html not found")
     return FileResponse(index_path, media_type="text/html")
 
 
+@app.get("/login", response_class=FileResponse)
+async def login_page():
+    """Serve login page."""
+    login_path = PORTAL_DIR / "login.html"
+    if not login_path.exists():
+        raise HTTPException(status_code=500, detail="Login page not found")
+    return FileResponse(login_path, media_type="text/html")
+
+
 @app.get("/api/v2/config/limits")
-async def api_config_limits():
+async def api_config_limits(user: dict = Depends(get_current_user)):
     """Get conversation limit configuration."""
     try:
         config = get_conversation_config()
@@ -92,13 +220,13 @@ async def api_config_limits():
 
 
 @app.post("/api/init")
-async def api_init():
+async def api_init(user: dict = Depends(get_current_user)):
     """Get or create single conversation; return conversation_id and user."""
     try:
-        conv = get_or_create_conversation()
+        conv = get_or_create_conversation(user["user_id"])
         return {
             "conversation_id": conv["id"],
-            "user": DEFAULT_USER,
+            "user": {"email": user["email"], "full_name": user["full_name"]},
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Init failed: {str(e)}")
@@ -109,7 +237,7 @@ class ValidateBody(BaseModel):
 
 
 @app.post("/api/chat/validate")
-async def api_chat_validate(body: ValidateBody):
+async def api_chat_validate(body: ValidateBody, user: dict = Depends(get_current_user)):
     """Validate message before send (e.g. command args). Returns valid + message for placeholder."""
     text = (body.content or "").strip()
     valid, error_message = validate_message(text)
@@ -117,13 +245,19 @@ async def api_chat_validate(body: ValidateBody):
 
 
 @app.get("/api/messages")
-async def api_messages(conversation_id: str = ""):
-    """Get messages for a conversation."""
+async def api_messages(
+    conversation_id: str = "",
+    user: dict = Depends(get_current_user),
+):
+    """Get messages for a conversation. User must own the conversation."""
     if not conversation_id:
         return []
     try:
-        if not database_manager.get_conversation(conversation_id):
+        conv = database_manager.get_conversation(conversation_id)
+        if not conv:
             raise HTTPException(status_code=404, detail="Conversation not found")
+        if conv.get("user_id") != user["user_id"]:
+            raise HTTPException(status_code=403, detail="Forbidden")
         messages = database_manager.get_messages(
             conversation_id, limit=100, offset=0
         )
@@ -155,7 +289,6 @@ class ChatSendBody(BaseModel):
 class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
     title: Optional[str] = None
-    user_id: str = "default_user"
     active_conversation_id: Optional[str] = None
 
 
@@ -191,25 +324,12 @@ class CreateConversationResponse(BaseModel):
 
 
 @app.get("/api/v2/conversations")
-async def api_v2_conversations_list(user_id: str = "default_user"):
+async def api_v2_conversations_list(user: dict = Depends(get_current_user)):
     """
-    Get visible conversations for a user, sorted by relevance.
-    
-    Query Parameters:
-    - user_id: User ID (default: "default_user")
-    
-    Response:
-    - conversations: List of conversation objects
-    - visible_count: Number of visible conversations
-    - max_allowed: Maximum allowed conversations
-    - warning: If true, user is at warning threshold
-    
-    Returns 200 with conversation list.
+    Get visible conversations for the current user, sorted by relevance.
     """
-    assert user_id, "user_id required"
-    
+    user_id = user["user_id"]
     try:
-        # Get visible conversations
         conversations = get_visible_conversations(user_id, limit=MAX_ACTIVE_CONVERSATIONS)
         
         # Convert to dicts
@@ -239,29 +359,16 @@ async def api_v2_conversations_list(user_id: str = "default_user"):
 
 
 @app.post("/api/v2/conversations")
-async def api_v2_conversations_create(body: CreateConversationRequest):
+async def api_v2_conversations_create(
+    body: CreateConversationRequest,
+    user: dict = Depends(get_current_user),
+):
     """
-    Create a new conversation.
-    
-    If creating this conversation exceeds the limit, the lowest-scoring 
+    Create a new conversation for the current user.
+    If creating this conversation exceeds the limit, the lowest-scoring
     conversation is automatically hidden.
-    
-    Request:
-    - title: Optional conversation title
-    - user_id: User ID (default: "default_user")
-    
-    Response:
-    - conversation: Created conversation object
-    - visible_count: Number of visible conversations after creation
-    - max_allowed: Maximum allowed conversations
-    - warning: If true, user has reached warning threshold
-    - auto_hidden: If hiding occurred, metadata about hidden conversation
-    
-    Returns 201 if successful.
     """
-    user_id = body.user_id or "default_user"
-    assert user_id, "user_id required"
-    
+    user_id = user["user_id"]
     try:
         # Create conversation via database manager
         title = body.title or "New Conversation"
@@ -307,24 +414,18 @@ async def api_v2_conversations_create(body: CreateConversationRequest):
 
 
 @app.patch("/api/v2/conversations/{conversation_id}/open")
-async def api_v2_conversations_open(conversation_id: str):
+async def api_v2_conversations_open(
+    conversation_id: str,
+    user: dict = Depends(get_current_user),
+):
     """
     Mark a conversation as opened (update last_opened_at).
-    
-    Called when user switches to a conversation in the UI.
-    Updates the viewing activity timestamp for relevance calculation.
-    
-    Path Parameters:
-    - conversation_id: Conversation ID
-    
-    Response:
-    - id: Conversation ID
-    - last_opened_at: Updated timestamp
-    
-    Returns 200 if successful, 404 if conversation not found.
+    User must own the conversation.
     """
     assert conversation_id, "conversation_id required"
-    
+    conv = database_manager.get_conversation(conversation_id)
+    if not conv or conv.get("user_id") != user["user_id"]:
+        raise HTTPException(status_code=404, detail="Conversation not found")
     try:
         repo = ConversationRepository()
         updated_conv = repo.mark_opened(conversation_id)
@@ -344,7 +445,7 @@ async def api_v2_conversations_open(conversation_id: str):
 
 
 @app.post("/api/chat/send")
-async def api_chat_send(body: ChatSendBody):
+async def api_chat_send(body: ChatSendBody, user: dict = Depends(get_current_user)):
     """Send a message; run RAG/eligibility via run_chat; save messages; return response."""
     content = (body.content or "").strip()
     if not content:
@@ -355,6 +456,8 @@ async def api_chat_send(body: ChatSendBody):
         conv = database_manager.get_conversation(conversation_id)
         if not conv:
             raise HTTPException(status_code=404, detail="Conversation not found")
+        if conv.get("user_id") != user["user_id"]:
+            raise HTTPException(status_code=403, detail="Forbidden")
     except HTTPException:
         raise
     except Exception as e:

@@ -15,7 +15,8 @@ python-dotenv # Environment variables
 google-genai 
 langchain-google-genai
 
-# Portal (FastAPI)
+# Portal (FastAPI + Auth)
+bcrypt>=4.0.0
 fastapi>=0.109.0
 uvicorn[standard]>=0.27.0
 python-multipart>=0.0.9

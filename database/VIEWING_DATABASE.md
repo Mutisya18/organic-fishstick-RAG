@@ -17,7 +17,7 @@ python -m database.cli
 ### Option 2: Using SQLite CLI
 
 ```bash
-sqlite3 chat_history.db
+sqlite3 organic-fishstick.db
 ```
 
 ### Option 3: Using Python REPL
@@ -42,7 +42,7 @@ python
 cd /workspaces/organic-fishstick-RAG
 
 # Open database
-sqlite3 chat_history.db
+sqlite3 organic-fishstick.db
 ```
 
 ### Basic Commands
@@ -390,7 +390,7 @@ ORDER BY latency_ms DESC;
 ### Pretty Print with Headers
 
 ```bash
-sqlite3 chat_history.db
+sqlite3 organic-fishstick.db
 ```
 
 ```sql
@@ -484,13 +484,13 @@ EOF
 
 ```bash
 # Default location
-/workspaces/organic-fishstick-RAG/chat_history.db
+/workspaces/organic-fishstick-RAG/organic-fishstick.db
 
 # Check file size
-ls -lh chat_history.db
+ls -lh organic-fishstick.db
 
 # Check recent modifications
-stat chat_history.db
+stat organic-fishstick.db
 ```
 
 ### PostgreSQL
@@ -508,17 +508,17 @@ DATABASE_URL=postgresql://user:password@localhost:5432/chatbot_db
 
 ```bash
 # Backup entire database
-cp chat_history.db chat_history.db.backup
+cp organic-fishstick.db organic-fishstick.db.backup
 
 # Verified backup
-sqlite3 chat_history.db.backup "SELECT COUNT(*) FROM conversations;"
+sqlite3 organic-fishstick.db.backup "SELECT COUNT(*) FROM conversations;"
 ```
 
 ### SQLite Restore
 
 ```bash
 # Restore from backup
-cp chat_history.db.backup chat_history.db
+cp organic-fishstick.db.backup organic-fishstick.db
 ```
 
 ### PostgreSQL Backup
@@ -538,17 +538,17 @@ psql -U $DB_USER -h $DB_HOST -d $DB_NAME < backup.sql
 ### Check Database Corruption (SQLite)
 
 ```bash
-sqlite3 chat_history.db "PRAGMA integrity_check;"
+sqlite3 organic-fishstick.db "PRAGMA integrity_check;"
 ```
 
 ### Analyze Database Size
 
 ```bash
 # Total size
-ls -lh chat_history.db
+ls -lh organic-fishstick.db
 
 # Size per table (SQLite)
-sqlite3 chat_history.db "
+sqlite3 organic-fishstick.db "
 SELECT 
   name,
   SUM(pgsize) / 1024 / 1024.0 as size_mb
@@ -580,14 +580,14 @@ Add to your `.bashrc` or `.zshrc`:
 
 ```bash
 # SQLite quick access
-alias db='sqlite3 /workspaces/organic-fishstick-RAG/chat_history.db'
+alias db='sqlite3 /workspaces/organic-fishstick-RAG/organic-fishstick.db'
 
 # Query shortcuts
-alias db_tables='sqlite3 /workspaces/organic-fishstick-RAG/chat_history.db ".tables"'
-alias db_convs='sqlite3 /workspaces/organic-fishstick-RAG/chat_history.db "SELECT id, title, message_count FROM conversations ORDER BY created_at DESC;"'
+alias db_tables='sqlite3 /workspaces/organic-fishstick-RAG/organic-fishstick.db ".tables"'
+alias db_convs='sqlite3 /workspaces/organic-fishstick-RAG/organic-fishstick.db "SELECT id, title, message_count FROM conversations ORDER BY created_at DESC;"'
 
 # Count data
-alias db_count='sqlite3 /workspaces/organic-fishstick-RAG/chat_history.db "SELECT (SELECT COUNT(*) FROM conversations) as convs, (SELECT COUNT(*) FROM messages) as msgs;"'
+alias db_count='sqlite3 /workspaces/organic-fishstick-RAG/organic-fishstick.db "SELECT (SELECT COUNT(*) FROM conversations) as convs, (SELECT COUNT(*) FROM messages) as msgs;"'
 ```
 
 Usage:
@@ -603,7 +603,7 @@ db ".schema"           # Show full schema
 ## Example: Full Interactive Session
 
 ```bash
-$ sqlite3 chat_history.db
+$ sqlite3 organic-fishstick.db
 
 sqlite> .headers on
 sqlite> .mode column
@@ -642,7 +642,7 @@ sqlite> .quit
 # Solution: Close other connections or wait
 
 # Check if database is in use
-lsof | grep chat_history.db
+lsof | grep organic-fishstick.db
 ```
 
 ### No Tables Found
