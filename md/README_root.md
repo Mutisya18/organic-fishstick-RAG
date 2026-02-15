@@ -63,7 +63,7 @@
     - `curl http://localhost:11434/api/tags` (local)
     - `curl https://your-ngrok-url.ngrok-free.dev/api/tags` (remote)
 - Verify database status:
-    - Run `python test_context_flow.py` for context checks
+    - Run `python tests/portal/test_context_flow.py` for context checks
 
 ### 3. Configuration Problems
 - Double-check `.env` values

@@ -22,7 +22,7 @@ echo -e "\n${YELLOW}[TEST 1] Running Regression Test (Ollama Only)...${RESET}"
 echo -e "${YELLOW}This test validates that existing Ollama-only workflow still works.${RESET}"
 echo -e "${YELLOW}Expected: All 7 test groups should PASS${RESET}\n"
 
-if python rag/test_regression_ollama.py; then
+if python tests/core/test_regression_ollama.py; then
     echo -e "\n${GREEN}✓ REGRESSION TEST PASSED${RESET}\n"
     REGRESSION_PASS=true
 else
@@ -38,7 +38,7 @@ if [ "$REGRESSION_PASS" = false ]; then
     echo -e "\n${YELLOW}Troubleshooting:${RESET}"
     echo -e "1. Is Ollama running? Check: curl http://localhost:11434/api/tags"
     echo -e "2. Does rag/data/ contain any PDF/DOCX files?"
-    echo -e "3. Run with DEBUG_MODE=true python rag/test_regression_ollama.py"
+    echo -e "3. Run with DEBUG_MODE=true python tests/core/test_regression_ollama.py"
     exit 1
 fi
 
@@ -54,7 +54,7 @@ if [ -z "$GEMINI_API_KEY" ]; then
     GEMINI_GEN_PASS="skipped"
 else
     echo -e "${YELLOW}Testing Gemini generation (Ollama embedding)...${RESET}\n"
-    if ACTIVE_EMBEDDING_PROVIDER=ollama ACTIVE_GENERATION_PROVIDER=gemini python rag/test_integration_gemini_gen_ollama_embed.py; then
+    if ACTIVE_EMBEDDING_PROVIDER=ollama ACTIVE_GENERATION_PROVIDER=gemini python tests/core/test_integration_gemini_gen_ollama_embed.py; then
         echo -e "\n${GREEN}✓ GEMINI GENERATION TEST PASSED${RESET}\n"
         GEMINI_GEN_PASS=true
     else
@@ -74,7 +74,7 @@ else
     echo -e "${YELLOW}Note: This test requires a populated Gemini collection.${RESET}"
     echo -e "${YELLOW}Build it first with: ACTIVE_EMBEDDING_PROVIDER=gemini python rag/populate_database.py${RESET}\n"
     
-    if ACTIVE_EMBEDDING_PROVIDER=gemini ACTIVE_GENERATION_PROVIDER=ollama python rag/test_integration_gemini_embed_ollama_gen.py; then
+    if ACTIVE_EMBEDDING_PROVIDER=gemini ACTIVE_GENERATION_PROVIDER=ollama python tests/core/test_integration_gemini_embed_ollama_gen.py; then
         echo -e "\n${GREEN}✓ GEMINI EMBEDDING TEST PASSED${RESET}\n"
         GEMINI_EMBED_PASS=true
     else
@@ -94,7 +94,7 @@ if [ -z "$GEMINI_API_KEY" ]; then
 else
     echo -e "${YELLOW}Testing Full Gemini (both embeddings + generation)...${RESET}\n"
     
-    if ACTIVE_EMBEDDING_PROVIDER=gemini ACTIVE_GENERATION_PROVIDER=gemini python rag/test_integration_full_gemini.py; then
+    if ACTIVE_EMBEDDING_PROVIDER=gemini ACTIVE_GENERATION_PROVIDER=gemini python tests/core/test_integration_full_gemini.py; then
         echo -e "\n${GREEN}✓ FULL GEMINI TEST PASSED${RESET}\n"
         FULL_GEMINI_PASS=true
     else
