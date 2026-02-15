@@ -103,3 +103,4 @@ class DBRetryExhaustedError(DatabaseError):
         self.attempts = attempts
         full_message = f"{message} (after {attempts} attempts). Last error: {str(last_error)}"
         super().__init__(full_message)
+

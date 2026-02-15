@@ -48,14 +48,16 @@ class ConversationRepository(BaseRepository[Conversation]):
             DatabaseError: On creation failure
         """
         logger.info(f"Creating conversation for user_id={user_id}, title={title}")
-        
+
+        now = datetime.utcnow()
         data = {
             'user_id': user_id,
             'title': title,
             'status': ConversationStatus.ACTIVE,
-            'message_count': 0
+            'message_count': 0,
+            'last_opened_at': now,
         }
-        
+
         return self.create(data)
     
     def get_by_user_id(
@@ -279,7 +281,55 @@ class ConversationRepository(BaseRepository[Conversation]):
         
         except Exception as e:
             logger.error(f"Failed to count conversations for {user_id}: {str(e)}")
-            raise DatabaseError(f"Failed to count conversations: {str(e)}") from e    
+            raise DatabaseError(f"Failed to count conversations: {str(e)}") from e
+
+    def get_visible_by_relevance(
+        self,
+        user_id: str,
+        limit: int = 20,
+    ) -> List[Conversation]:
+        """
+        Get non-hidden conversations for a user, ordered by relevance score.
+
+        Relevance = 0.6 * last_opened_at + 0.4 * last_message_at (fallback created_at).
+        Used for list API; only returns visible (is_hidden=False) conversations.
+
+        Args:
+            user_id: User ID
+            limit: Max conversations to return (default 20)
+
+        Returns:
+            List of Conversation instances, highest relevance first
+        """
+        assert user_id, "user_id must not be empty"
+        assert limit >= 1 and limit <= 1000, "limit must be between 1 and 1000"
+
+        try:
+            with get_session() as session:
+                rows = (
+                    session.query(Conversation)
+                    .filter(
+                        Conversation.user_id == user_id,
+                        Conversation.is_hidden.is_(False),
+                        Conversation.status == ConversationStatus.ACTIVE,
+                    )
+                    .all()
+                )
+            # Sort by relevance descending (higher = more relevant)
+            sorted_list = sorted(
+                rows,
+                key=lambda c: c.get_relevance_score(),
+                reverse=True,
+            )
+            return sorted_list[:limit]
+        except Exception as e:
+            logger.error(
+                f"Failed to fetch visible conversations for user_id={user_id}: {str(e)}"
+            )
+            raise DatabaseError(
+                f"Failed to fetch visible conversations: {str(e)}"
+            ) from e
+
     def mark_opened(self, conversation_id: str) -> Dict[str, Any]:
         """
         Update conversation's last_opened_at to current time.

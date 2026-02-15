@@ -81,32 +81,47 @@ const api = {
     }
   },
 
-  async createConversation(title) {
+  async createConversation(title, activeConversationId) {
     try {
       setRequestPending(true);
+      const body = {
+        title: title || "New Chat",
+        active_conversation_id: activeConversationId || null,
+      };
       const res = await fetch("/api/v2/conversations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title || "New Chat" }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error("Create failed");
       const data = await res.json();
-      
-      // Update state with new conversation
+
       setConversationId(data.conversation.id);
       setVisibleCount(data.visible_count);
-      
-      // Handle warning flag
+
       if (data.warning && !isWarningShown()) {
         setWarningShown(true);
-        console.warn("Conversation limit warning:", data.warning);
       }
-      
-      // If auto-hid a conversation, quietly update list
-      if (data.auto_hidden) {
-        console.info("Auto-hidden conversation:", data.auto_hidden);
-      }
-      
+
+      (function () {
+        const current = getConversations();
+        const withNew = [data.conversation].concat(
+          current.filter(function (c) {
+            return c.id !== data.conversation.id;
+          })
+        );
+        const hiddenId =
+          data.auto_hidden && data.auto_hidden.conversation_id
+            ? data.auto_hidden.conversation_id
+            : null;
+        const list = hiddenId
+          ? withNew.filter(function (c) {
+              return c.id !== hiddenId;
+            })
+          : withNew;
+        setConversations(list);
+      })();
+
       return data;
     } catch (e) {
       console.error("Failed to create conversation:", e);

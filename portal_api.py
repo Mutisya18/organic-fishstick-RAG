@@ -20,16 +20,16 @@ from database import db as database_manager
 from database.services.conversation_service import (
     get_visible_conversations,
     count_visible_conversations,
-    apply_auto_hide_if_needed
+    apply_auto_hide_if_needed,
 )
-from database.services.audit_logger import audit_logger
 from database.repository.conversation_repository import ConversationRepository
 from backend.chat import run_chat, validate_message
 from rag.config.prompts import DEFAULT_PROMPT_VERSION
 from rag.config.conversation_limits import (
     get_config as get_conversation_config,
+    ENABLE_LIMIT,
     CONVERSATION_WARNING_THRESHOLD,
-    MAX_ACTIVE_CONVERSATIONS
+    MAX_ACTIVE_CONVERSATIONS,
 )
 
 logger = logging.getLogger(__name__)
@@ -156,6 +156,7 @@ class CreateConversationRequest(BaseModel):
     """Request to create a new conversation."""
     title: Optional[str] = None
     user_id: str = "default_user"
+    active_conversation_id: Optional[str] = None
 
 
 class ConversationDetail(BaseModel):
@@ -216,9 +217,12 @@ async def api_v2_conversations_list(user_id: str = "default_user"):
         
         # Count visible
         visible_count = count_visible_conversations(user_id)
-        
-        # Check if user is at warning threshold
-        warning = visible_count >= CONVERSATION_WARNING_THRESHOLD
+
+        # Warning only when limit feature is enabled
+        warning = (
+            ENABLE_LIMIT
+            and visible_count >= CONVERSATION_WARNING_THRESHOLD
+        )
         
         logger.info(f"Listed {visible_count} conversations for user_id={user_id}")
         
@@ -266,20 +270,23 @@ async def api_v2_conversations_create(body: CreateConversationRequest):
             title=title
         )
         
-        visible_count_before = count_visible_conversations(user_id)
-        
-        # Apply auto-hiding if needed
+        # Apply auto-hiding if needed (exclude conversation user was viewing)
         auto_hide_metadata = apply_auto_hide_if_needed(
             user_id=user_id,
-            active_conversation_id=new_conv.get("id")
+            active_conversation_id=body.active_conversation_id,
         )
-        
+
         visible_count_after = count_visible_conversations(user_id)
-        warning = visible_count_after >= CONVERSATION_WARNING_THRESHOLD
-        
+        warning = (
+            ENABLE_LIMIT
+            and visible_count_after >= CONVERSATION_WARNING_THRESHOLD
+        )
+
         logger.info(
-            f"Created conversation {new_conv.get('id')} for user_id={user_id} "
-            f"(visible: {visible_count_before} -> {visible_count_after})"
+            "Created conversation %s for user_id=%s (visible_count=%s)",
+            new_conv.get("id"),
+            user_id,
+            visible_count_after,
         )
         
         response = {

@@ -1,163 +1,182 @@
-To implement effective logging for an LLM-based RAG (Retrieval-Augmented Generation) system, you must follow a dual-track strategy: **Traditional System Logging** (for health and errors) and **LLM Observability** (for quality and security).
+# 📘 Logging Rulebook — Scalable, Structured, and Standards-Driven
 
-Below are the rules for the LLM to follow when implementing logs.
+## 📌 1. Logging Purpose & Objectives
 
-### 1. General Formatting Rules
+* **Definite Purpose:** Only log events that serve a clear diagnostic, observability, audit, compliance, or business insight purpose.
+* **Logging KPIs:** Define measurable goals like *mean time to resolution (MTTR)* using logs for debugging or support.
+* **Correlatable:** Logs must help trace behavior, not just record activity.
 
-* **JSON Only**: All logs must be output in a structured JSON format to allow for easy parsing by tools like ELK, Datadog, or your RAG evaluation framework.
-* **Unique Request IDs**: Every interaction must carry a `request_id` or `trace_id` that links the user input, the retrieval step, and the final LLM generation.
-* **ISO 8601 Timestamps**: Use standard UTC timestamps (e.g., `2024-05-15T10:00:00Z`).
-* **Standard Severity Levels**: Follow standard levels: `DEBUG` (tokens, raw chunks), `INFO` (user query summary), `WARNING` (empty retrieval), `ERROR` (API timeout), `CRITICAL` (model failure).
+---
 
-### 2. RAG-Specific Logging Rules
+## 📊 2. Structure Your Logs
 
-For a RAG pipeline, the LLM must log the following metadata for every query:
+* **Structured Format:** Always emit logs in a structured format (JSON recommended) with discrete key/value fields.
+  Structured logs are easier to index, query, filter, and analyze compared to free-text logs. ([Dash0][1])
+* **Machine-First:** Treat logs as data, not text — optimized for systems rather than for human manual search. ([Dash0][1])
+* **Standard Schema:** Define a common schema and enforce it (e.g., via linters, CI checks).
 
-* **Retrieval Metadata**:
-* `top_k`: Number of chunks requested.
-* `chunk_ids`: List of specific chunks retrieved from the vector database.
-* `similarity_scores`: The distance/relevance score for each chunk.
-* `source_documents`: File names or URLs of the retrieved context.
+Example schema fields:
 
-
-* **Generation Context**:
-* `prompt_template_version`: The version of the system prompt used.
-* `total_tokens`: Breakdown of `prompt_tokens`, `completion_tokens`, and `total_tokens` for cost tracking.
-* `latency`: Measured time for each stage (Retrieval vs. Generation).
-
-
-
-### 3. Security & Privacy Rules (Critical)
-
-* **PII Scrubbing**: Before logging raw `input_text` or `output_text`, the system must run a redacting function to remove Personal Identifiable Information (Names, Emails, Phone Numbers).
-* **No System Prompts**: Do not log the full system prompt in every entry (to save space and protect IP); instead, log a `prompt_hash` or version ID.
-* **Sanitize Inputs**: Log a flag `is_flagged` if the input triggered any content moderation filters (Toxicity, Prompt Injection).
-
-### 4. Quality & Evaluation Rules
-
-To enable "LLM-as-a-Judge" or manual review later, the LLM must facilitate "Evaluation Logs":
-
-* **Groundedness Score**: If possible, log a self-assessment of whether the answer is based strictly on the retrieved chunks.
-* **Citation Mapping**: Log which specific chunks were actually cited in the final answer.
-* **User Feedback**: Link any user "thumbs up/down" to the specific `request_id` in the log store.
-
-### 5. Implementation Example (Python Logic)
-
-When the LLM writes the logging code, it should look like this:
-
-```python
-import logging
-import json
-
-class RAGLogger:
-    def log_interaction(self, request_id, query, retrieved_chunks, response, usage):
-        log_entry = {
-            "request_id": request_id,
-            "event": "llm_generation_complete",
-            "metrics": {
-                "latency_ms": usage.get("latency"),
-                "tokens": usage.get("tokens")
-            },
-            "retrieval": {
-                "count": len(retrieved_chunks),
-                "sources": [c.metadata['source'] for c in retrieved_chunks]
-            },
-            # Note: In production, scrub 'query' and 'response' for PII first
-            "data": {
-                "query_summary": query[:100], 
-                "grounded": True # Example flag
-            }
-        }
-        logging.info(json.dumps(log_entry))
-
+```markdown
+- timestamp (ISO 8601)
+- level (ERROR, WARN, INFO, DEBUG, TRACE)
+- service (component name)
+- trace_id (unique correlation ID)
+- span_id (if used)
+- event (semantic event identifier)
+- message (human-friendly)
+- context.* (additional metadata)
 ```
 
-### Summary Checklist for Implementation:
+---
 
-1. **Does the log contain a Trace ID?** (Required for debugging)
-2. **Is the cost (tokens) recorded?** (Required for budget)
-3. **Are the retrieval sources cited?** (Required for RAG accuracy)
-4. **Is sensitive data redacted?** (Required for compliance)
+## 🔁 3. Correlation & Traceability
 
+* **Generate and Propagate Request IDs:** Every incoming request must receive a unique `trace_id`, passed through all services.
+* **Include Span IDs:** When distributed tracing is used, include `span_id` to link across service calls.
+* **Never Overwrite IDs:** Always append additional context instead.
+* **Correlate Across Systems:** Correlation enables tracing issues across microservices and retries.
 
-### **Technical Requirements Specification: Session-Based Trace Logging**
+Structured logs with correlation allow queries like:
 
-This specification outlines the logic for an automated, high-granularity logging system designed to provide a "black-box" recording of every technical event within your RAG application.
+> “Show all ERRORs for trace_id=`abc123` in the last hour.”
 
 ---
 
-### **1. Storage Architecture**
+## 📈 4. Log Levels & Severity
 
-* **Directory Structure**: All logs must be stored in a dedicated `/logs` directory at the project root.
-* **File Naming**: Files must be named using a sortable timestamp: `session_YYYYMMDD_HHMMSS.log`.
-* **Persistence**: Logs must be written in "Append" mode with **immediate flushing** (unbuffered). This ensures that if the process crashes at line 150, line 149 is already physically saved to the disk.
+Use standardized severity levels consistently:
 
----
+```markdown
+- ERROR — Failures or critical faults
+- WARN — Suspicious conditions
+- INFO — Normal life-cycle events
+- DEBUG — Detailed developer context
+- TRACE — Very fine-grained tracing
+```
 
-### **2. Session Lifecycle Management**
-
-The system must manage log rotation based on two competing triggers:
-
-* **Trigger A: The 15-Minute Idle Rule**
-* The system monitors the time elapsed since the *last* log entry.
-* If `current_time - last_entry_time > 15 minutes`, the current file handle is closed.
-* Upon the next activity, a brand new file is created with a new timestamp.
-
-
-* **Trigger B: The 1-Hour Hard Limit**
-* The system monitors the time elapsed since the *creation* of the current log file.
-* If `current_time - file_creation_time > 60 minutes`, the file is rotated immediately, even if the user is currently active.
-
-
-* **Session Metadata**: The first line of every new file must contain a "Session Header" including the System Version, Environment (Dev/Prod), and Start Time.
+* **Production Defaults:** Default production level should be INFO or WARN; enable DEBUG/TRACE only via config.
+* **Meaningful Levels:** Avoid inflating logs with verbose DEBUG output unless actively troubleshooting. ([Better Stack][2])
 
 ---
 
-### **3. Technical Granularity & Traceability**
+## 📍 5. What & What Not to Log
 
-To meet the requirement of tracing exactly where a process completes or fails, every log entry must capture the following "No-Summarization" data points:
+### 📌 What To Log
 
-#### **A. Caller Context (The "Where")**
+* Key lifecycle events (start, end, error, outcome).
+* External request/response metadata (method, URL, status, duration).
+* Business-important context (user IDs, entity IDs, request parameters that are safe to log).
 
-Every log line must automatically extract and prepend:
+### 🚫 What Not To Log
 
-* **Absolute File Path**: The script where the call originated.
-* **Function Name**: The specific function being executed.
-* **Line Number**: The exact line of code currently being processed.
-
-#### **B. Data Flow (The "What")**
-
-* **Function Entry**: Log the exact input arguments (`args` and `kwargs`).
-* **Function Exit**: Log the raw return value or object.
-* **API Interactions**: For external calls (OpenAI, Vector DB, etc.), log the raw Request Body and the raw Response Headers/Body. Do not truncate long strings; keep the full technical payload.
-
-#### **C. Execution State**
-
-* **Timestamps**: High-precision timestamps (including milliseconds).
-* **Thread/Process ID**: Essential for tracing if you are using asynchronous calls or multi-threading, to ensure logs from different tasks don't get mixed up.
+* Sensitive personal data (PII, passwords, tokens) — mask or exclude.
+* High-cardinality identifiers in metrics context when unnecessary.
+* Free-form stack dumps without structural keys. ([Better Stack][2])
 
 ---
 
-### **4. Error & Termination Handling**
+## 🧱 6. Standardize Log Fields & Formats
 
-* **Implicit Termination**: If a process stops, the last log entry will be the "Function Entry" or a specific "Step" log. The absence of an "Exit" log for that same function name/line is the technical indicator of the crash point.
-* **Explicit Exceptions**: Upon a code crash, the logger must intercept the signal and write the **Full Traceback**. It must capture every frame leading up to the failure to identify the exact state of variables at the moment of termination.
-
----
-
-### **5. Implementation Logic (Rules for the Code)**
-
-1. **Centralized Logger**: Create a singleton "SessionManager" class that holds the state of the current file handle.
-2. **Wrappers/Interceptors**: Use a "Technical Trace" decorator on all major functions. This decorator handles the "Before" (Input/Line #) and "After" (Output/Duration) logic automatically.
-3. **Low-Level Hooking**: Use the language's standard `logging` library but override the `emit` method to check the Session Lifecycle rules before every single write operation.
+* **Consistent Field Names:** Everyone uses the same field names for the same concepts (e.g., `user_id`, not `userid` or `uid`).
+* **Timestamps:** Use ISO 8601 across logs with timezone info.
+* **Verify Format:** CI checks should reject invalid structured logs.
+* **Use OpenTelemetry Conventions:** A common observability contract makes logs interoperable across tools. ([Dash0][1])
 
 ---
 
-### **Summary of Success Criteria**
+## 🗂 7. Centralize & Aggregate
 
-If correctly implemented, you should be able to open a log file and see:
+* **Central Logging System:** All logs should flow to a centralized store (Elastic, Loki, Splunk, Honeycomb, etc.) for querying and alerts.
+* **Agents & Collectors:** Use log agents (Fluentd, Filebeat, etc.) to reliably ship logs without tying them to application threads.
+* **Enforce Schema at Ingestion:** The central system should validate structured data on arrival.
 
-1. **[10:00:01] [main.py:45] CALL**: `ingest_document(file="data.pdf")`
-2. **[10:00:05] [retriever.py:112] API_REQ**: `POST https://api.openai.com/v1/embeddings {input: "..."}`
-3. **[10:00:06] [retriever.py:112] API_RES**: `200 OK {data: [...]}`
-4. **[10:21:00] [SessionManager]**: `Idle timeout reached. Session Terminated.`
+Having a centralized store improves cross-service analysis and makes root-cause tracing easier. ([Better Stack][2])
+
+---
+
+## ⏱ 8. Retention & Lifecycle
+
+* **Retention Policies:** Define and automate log retention times (short for verbose logs, longer for audit/security logs).
+* **Rotation & Archival:** Rotate logs to avoid overconsuming storage and archive old logs if needed for compliance.
+* **Monitor Costs:** Logging volume can drive storage and query costs — manage sampling and log volume.
+
+---
+
+## 🔐 9. Security & Privacy
+
+* **Encrypt In Transit & At Rest:** Use TLS and secure storage to guard logs.
+* **Mask Sensitive Data:** Encrypt or redact PII, credentials, and other sensitive fields.
+* **Access Controls:** Log access should respect RBAC and audit policies.
+* **Audit Trail:** Keep audit trails for security-relevant events longer as required. ([Better Stack][2])
+
+*NIST SP 800-92* recommends secure log management for security event detection and incident analysis. ([Wikipedia][3])
+
+---
+
+## 📡 10. Observability & Context
+
+* **Correlate with Metrics & Traces:** Logs by themselves tell part of the story — combine with metrics and tracing to get a full view.
+* **Context Enrichment:** Include environment, version, deployment IDs to filter by release or region.
+* **Canonical Events:** Where possible, emit canonical consolidated events rather than many micro logs. ([Honeycomb][4])
+
+---
+
+## 🤖 11. CI/CD & Tooling Integration
+
+* **Schema Enforcement in CI:** Validate logs during builds/deploys to prevent malformed output.
+* **Documentation Automation:** Generate docs from schema definitions so every team knows the contract.
+* **Testing & Validation:** Verify logging behavior as part of integration and load tests.
+
+Document logging hygiene — formats, levels, retention, sensitive data handling — so everyone adheres to the same practice.
+
+---
+
+## 📊 12. Alerts, Monitoring & Analytics
+
+* **Real-Time Alerts:** Set alerts on ERROR or repeated warnings at scale.
+* **Dashboards:** Build dashboards tracking log counts by error codes, latency buckets, service, etc.
+* **Analytics:** Treat structured logs as a dataset for trend analysis and anomaly detection. ([Better Stack][2])
+
+---
+
+## 📌 13. Developer Practices & Readability
+
+* **Human-Readable Field:** Even if logs are structured, include a short human-friendly message summarizing the event.
+* **Avoid Overlogging:** Logging too much slows down the system and inflates costs.
+* **Canonical Format:** Log one coherent event per request/lifecycle boundary when possible. ([mezmo.com][5])
+
+---
+
+## 📄 Example Structured Log (JSON)
+
+```json
+{
+  "timestamp": "2025-11-25T11:05:15.659Z",
+  "level": "ERROR",
+  "service": "loan-service",
+  "trace_id": "abc123-xyz789",
+  "event": "external_api_error",
+  "error": {
+    "type": "WebException",
+    "message": "Unable to connect to the remote server",
+    "target": "10.3.100.210:8083"
+  },
+  "context": {
+    "operation": "GetAuth",
+    "component": "API_GATEWAY"
+  }
+}
+```
+
+---
+
+## ✔️ Quick Checklist
+
+* ✅ Log structured JSON
+* ✅ Include trace_id & proper level
+* ✅ No sensitive data logged
+* ✅ Centralized ingestion enabled
+* ✅ Retention & alerting defined
+
+---

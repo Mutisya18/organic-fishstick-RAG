@@ -87,6 +87,25 @@
     if (welcomeContent) welcomeContent.style.display = "none";
   }
 
+  function showContentLoader() {
+    var loader = document.getElementById("contentLoader");
+    if (!loader && messagesContainer) {
+      loader = document.createElement("div");
+      loader.id = "contentLoader";
+      loader.className = "content-loader";
+      loader.setAttribute("aria-hidden", "true");
+      loader.innerHTML =
+        '<div class="content-loader-spinner"></div><p class="content-loader-text">Loading…</p>';
+      messagesContainer.appendChild(loader);
+    }
+    if (loader) loader.classList.add("content-loader-visible");
+  }
+
+  function hideContentLoader() {
+    var loader = document.getElementById("contentLoader");
+    if (loader) loader.classList.remove("content-loader-visible");
+  }
+
   function slideOutCards(callback) {
     if (!quickActions) {
       if (callback) callback();
@@ -249,25 +268,44 @@
       
       try {
         newChatBtn.disabled = true;
-        const result = await api.createConversation("New Chat");
+        showContentLoader();
+        var result = await api.createConversation(
+          "New Chat",
+          getConversationId()
+        );
         console.info("New conversation created:", result.conversation.id);
-        
-        // Render new conversation in sidebar
+
+        var listData = await api.listConversations();
+        if (listData && listData.conversations) {
+          setConversations(listData.conversations);
+          setVisibleCount(listData.visible_count || 0);
+        }
         renderConversationsList();
-        
-        // Clear messages and show welcome
+
         setMessages([]);
         hasStartedChat = false;
-        if (welcomeContent) welcomeContent.style.display = "block";
-        messagesContainer.innerHTML = "";
-        
-        // Show warning if reached threshold
+        var typingEl = document.getElementById("typingIndicator");
+        if (typingEl) typingEl.remove();
+        var messageEls = messagesContainer.querySelectorAll(".message");
+        for (var i = 0; i < messageEls.length; i++) messageEls[i].remove();
+        if (quickActions) {
+          quickActions.querySelectorAll(".action-card").forEach(function (card) {
+            card.classList.remove("slide-out-1", "slide-out-2", "slide-out-3");
+          });
+        }
+        if (welcomeContent) {
+          welcomeContent.style.display = "block";
+          if (welcomeSubtitle) {
+            var idx = Math.floor(Math.random() * WELCOME_PHRASES.length);
+            welcomeSubtitle.textContent = WELCOME_PHRASES[idx];
+          }
+        }
+
         if (result.warning && !isWarningShown()) {
           setWarningShown(true);
-          showWarningNotification(result.warning);
+          showWarningNotification();
         }
-        
-        // If auto-hid a conversation, show info
+        updateConversationBadge();
         if (result.auto_hidden) {
           console.info("Last conversation auto-hidden to maintain limit");
         }
@@ -276,6 +314,7 @@
         showInputError("Failed to create conversation");
       } finally {
         newChatBtn.disabled = false;
+        hideContentLoader();
       }
     });
   }
@@ -322,72 +361,101 @@
       // Handle conversation click
       div.addEventListener("click", async function () {
         try {
-          // Mark as opened (updates timestamp)
+          showContentLoader();
           await api.openConversation(conv.id);
-          
-          // Update active state in UI
-          document.querySelectorAll(".conversation-item").forEach(item => {
+          document.querySelectorAll(".conversation-item").forEach(function (item) {
             item.classList.remove("active");
           });
           div.classList.add("active");
-          
-          // Load messages for this conversation
-          const messages = await api.getMessages(conv.id);
+          var messages = await api.getMessages(conv.id);
           setMessages(messages);
-          
-          // Clear and re-render messages
           hasStartedChat = messages && messages.length > 0;
           if (welcomeContent) {
             welcomeContent.style.display = hasStartedChat ? "none" : "block";
           }
-          messagesContainer.innerHTML = "";
+          var typingEl = document.getElementById("typingIndicator");
+          if (typingEl) typingEl.remove();
+          var messageEls = messagesContainer.querySelectorAll(".message");
+          for (var i = 0; i < messageEls.length; i++) messageEls[i].remove();
+          if (!hasStartedChat && quickActions) {
+            quickActions.querySelectorAll(".action-card").forEach(function (card) {
+              card.classList.remove("slide-out-1", "slide-out-2", "slide-out-3");
+            });
+          }
           if (hasStartedChat) {
-            messages.forEach(m => {
+            messages.forEach(function (m) {
               addMessage(m.role, m.content, m.role === "assistant" ? "AI Assistant" : null);
             });
           }
         } catch (e) {
           console.error("Failed to switch conversation:", e);
+        } finally {
+          hideContentLoader();
         }
       });
       
       convList.appendChild(div);
     });
     
-    // Show counter badge
-    const counter = getState().conversations.visibleCount;
-    const max = config.maxAllowed;
-    console.info(`Conversations: ${counter}/${max}`);
+    updateConversationBadge();
   }
 
   /**
-   * Phase 5: Show warning notification when approaching limit
+   * Phase 5: Show warning notification (exact spec message, dismiss button)
    */
-  function showWarningNotification(warning) {
-    // Create toast notification element
+  function showWarningNotification() {
+    const message =
+      "You have 15 active conversations. At 20, older conversations will be automatically archived.";
     const toast = document.createElement("div");
     toast.className = "warning-toast";
-    toast.textContent = warning || "You have 15 active conversations";
-    toast.style.cssText = `
-      position: fixed;
-      top: 20px;
-      right: 20px;
-      background-color: #f59e0b;
-      color: #000;
-      padding: 12px 16px;
-      border-radius: 6px;
-      font-size: 14px;
-      z-index: 9999;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-      animation: slideIn 0.3s ease-out;
-    `;
+    toast.setAttribute("role", "alert");
+    toast.style.cssText =
+      "position:fixed;top:20px;right:20px;background:#f59e0b;color:#000;" +
+      "padding:12px 16px;border-radius:6px;font-size:14px;z-index:9999;" +
+      "box-shadow:0 4px 6px rgba(0,0,0,0.1);max-width:320px;";
+    const text = document.createElement("div");
+    text.textContent = message;
+    text.style.marginBottom = "8px";
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.justifyContent = "flex-end";
+    const dismiss = document.createElement("button");
+    dismiss.textContent = "Dismiss";
+    dismiss.type = "button";
+    dismiss.style.cssText =
+      "background:transparent;border:1px solid #000;cursor:pointer;padding:4px 8px;font-size:12px;";
+    dismiss.addEventListener("click", function () {
+      toast.remove();
+    });
+    row.appendChild(dismiss);
+    toast.appendChild(text);
+    toast.appendChild(row);
     document.body.appendChild(toast);
-    
-    // Auto-dismiss after 8 seconds
-    setTimeout(() => {
-      toast.style.animation = "slideOut 0.3s ease-out";
-      setTimeout(() => toast.remove(), 300);
+    setTimeout(function () {
+      if (toast.parentNode) {
+        toast.remove();
+      }
     }, 8000);
+  }
+
+  /**
+   * Phase 5: Update sidebar badge (visibleCount / maxAllowed) with color
+   */
+  function updateConversationBadge() {
+    const badge = document.getElementById("conversationCountBadge");
+    if (!badge) return;
+    const state = getState();
+    const count = state.conversations.visibleCount;
+    const max = state.conversations.maxAllowed || 20;
+    badge.textContent = "(" + count + "/" + max + ")";
+    badge.classList.remove("badge-green", "badge-yellow", "badge-red");
+    if (count >= max) {
+      badge.classList.add("badge-red");
+    } else if (count >= 15) {
+      badge.classList.add("badge-yellow");
+    } else {
+      badge.classList.add("badge-green");
+    }
   }
 
 
@@ -404,36 +472,36 @@
 
   /**
    * Phase 5: Multi-conversation initialization
-   * Call on app load: Get config, load conversations, select default, load messages
+   * Load list first so sidebar shows all conversations immediately, then config and messages.
    */
   async function initializeMultiConversation() {
     try {
-      // Load configuration limits from backend
-      const config = await api.getConversationConfig();
+      var convList = await api.listConversations();
+      setConversations(convList.conversations || []);
+      setVisibleCount(convList.visible_count || 0);
+      renderConversationsList();
+      updateConversationBadge();
+      var config = await api.getConversationConfig();
       if (!config) {
-        console.warn("Could not load conversation config, using defaults");
         setConversationConfig(20, 15);
+      } else {
+        setConversationConfig(config.maxConversations, config.warningThreshold);
       }
+      updateConversationBadge();
 
-      // Load list of visible conversations for user
-      const convList = await api.listConversations();
       if (convList && convList.conversations && convList.conversations.length > 0) {
-        // Select first conversation as default
-        const firstConv = convList.conversations[0];
+        var firstConv = convList.conversations[0];
         setConversationId(firstConv.id);
-        
-        // Load messages for this conversation
-        const messages = await api.getMessages(firstConv.id);
+        var messages = await api.getMessages(firstConv.id);
         setMessages(messages);
         renderStoredMessages();
-      } else {
-        // No conversations yet - welcome screen will show
-        console.info("No conversations loaded");
       }
+      renderConversationsList();
+      updateConversationBadge();
     } catch (e) {
       console.error("Multi-conversation init failed:", e);
-      // Fall through to render stored messages (may be empty)
-      renderStoredMessages();
+      renderConversationsList();
+      updateConversationBadge();
     }
   }
 
